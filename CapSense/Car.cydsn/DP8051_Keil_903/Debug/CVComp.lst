@@ -1,0 +1,1325 @@
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE CVCOMP
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\CVComp.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\Gene
+                    -rated_Source\PSoC3\CVComp.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\CVComp.lst) CD DB NOIP OT(0) INCDIR(
+                    -Generated_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\CVComp.obj)
+
+line level    source
+
+   1          /*******************************************************************************
+   2          * File Name: CVComp.c
+   3          * Version 1.90
+   4          *
+   5          * Description:
+   6          *  This file provides the source code to the API for the Comparator component
+   7          *
+   8          * Note:
+   9          *  None
+  10          *
+  11          ********************************************************************************
+  12          * Copyright 2008-2012, Cypress Semiconductor Corporation.  All rights reserved.
+  13          * You may use this file only in accordance with the license, terms, conditions, 
+  14          * disclaimers, and limitations in the end user license agreement accompanying 
+  15          * the software package with which this file was provided.
+  16          *******************************************************************************/
+  17          
+  18          #include "CVComp.h"
+  19          
+  20          uint8 CVComp_initVar = 0u;
+  21          
+  22          
+  23          /* static CVComp_backupStruct  CVComp_backup; */
+  24          #if (CY_PSOC5A)
+                  static CVComp_LOWPOWER_BACKUP_STRUCT  CVComp_lowPowerBackup;
+              #endif /* CY_PSOC5A */
+  27          
+  28          /* variable to decide whether or not to restore the control register in 
+  29             Enable() API for PSoC5A only */
+  30          #if (CY_PSOC5A)
+                  uint8 CVComp_restoreReg = 0u;
+              #endif /* CY_PSOC5A */
+  33          
+  34          
+  35          /*******************************************************************************
+  36          * Function Name: CVComp_Init
+  37          ********************************************************************************
+  38          *
+  39          * Summary:
+  40          *  Initialize to the schematic state
+  41          * 
+  42          * Parameters:
+  43          *  void
+  44          *
+  45          * Return:
+  46          *  void
+  47          *
+  48          *******************************************************************************/
+  49          void CVComp_Init(void) 
+  50          {
+  51   1          /* Set default speed/power */
+  52   1          CVComp_SetSpeed(CVComp_DEFAULT_SPEED);
+  53   1      
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 2   
+
+  54   1          /* Set default Hysteresis */
+  55   1          if ( CVComp_DEFAULT_HYSTERESIS == 0u )
+  56   1          {
+  57   2              CVComp_CR |= CVComp_HYST_OFF;
+  58   2          }
+  59   1          else
+  60   1          {
+  61   2              CVComp_CR &= ~CVComp_HYST_OFF; 
+  62   2          }
+  63   1          
+  64   1          /* Power down override feature is not supported for PSoC5A. */
+  65   1          #if (CY_PSOC3 || CY_PSOC5LP)
+  66   1              /* Set default Power Down Override */
+  67   1              if ( CVComp_DEFAULT_PWRDWN_OVRD == 0u )
+  68   1              {
+  69   2                  CVComp_CR &= ~CVComp_PWRDWN_OVRD;
+  70   2              }
+  71   1              else 
+  72   1              {
+  73   2                  CVComp_CR |= CVComp_PWRDWN_OVRD;
+  74   2              }
+  75   1          #endif /* CY_PSOC3 || CY_PSOC5LP */
+  76   1          
+  77   1          /* Set mux always on logic */
+  78   1          CVComp_CR |= CVComp_MX_AO;
+  79   1      
+  80   1          /* Set default sync */
+  81   1          CVComp_CLK &= ~CVComp_SYNCCLK_MASK;
+  82   1          if ( CVComp_DEFAULT_BYPASS_SYNC == 0u )
+  83   1          {
+  84   2              CVComp_CLK |= CVComp_SYNC_CLK_EN;
+  85   2          }
+  86   1          else
+  87   1          {
+  88   2              CVComp_CLK |= CVComp_BYPASS_SYNC;
+  89   2          }
+  90   1      }
+  91          
+  92          
+  93          /*******************************************************************************
+  94          * Function Name: CVComp_Enable
+  95          ********************************************************************************
+  96          *
+  97          * Summary:
+  98          *  Enable the Comparator
+  99          * 
+ 100          * Parameters:
+ 101          *  void
+ 102          *
+ 103          * Return:
+ 104          *  void
+ 105          *
+ 106          *******************************************************************************/
+ 107          void CVComp_Enable(void) 
+ 108          {
+ 109   1          CVComp_PWRMGR |= CVComp_ACT_PWR_EN;
+ 110   1          CVComp_STBY_PWRMGR |= CVComp_STBY_PWR_EN;
+ 111   1           
+ 112   1           /* This is to restore the value of register CR which is saved 
+ 113   1          in prior to the modification in stop() API */
+ 114   1          #if (CY_PSOC5A)
+                      if(CVComp_restoreReg == 1u)
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 3   
+
+                      {
+                          CVComp_CR = CVComp_lowPowerBackup.compCRReg;
+              
+                          /* Clear the flag */
+                          CVComp_restoreReg = 0u;
+                      }
+                  #endif /* CY_PSOC5A */
+ 123   1      }
+ 124          
+ 125          
+ 126          /*******************************************************************************
+ 127          * Function Name: CVComp_Start
+ 128          ********************************************************************************
+ 129          *
+ 130          * Summary:
+ 131          *  The start function initializes the Analog Comparator with the default values.
+ 132          *
+ 133          * Parameters:
+ 134          *  void
+ 135          *
+ 136          * Return:
+ 137          *  void 
+ 138          *
+ 139          * Global variables:
+ 140          *  CVComp_initVar: Is modified when this function is called for the 
+ 141          *   first time. Is used to ensure that initialization happens only once.
+ 142          *  
+ 143          *******************************************************************************/
+ 144          void CVComp_Start(void) 
+ 145          {
+ 146   1      
+ 147   1          if ( CVComp_initVar == 0u )
+ 148   1          {
+ 149   2              CVComp_Init();
+ 150   2              
+ 151   2              CVComp_initVar = 1u;
+ 152   2          }   
+ 153   1      
+ 154   1          /* Enable power to comparator */
+ 155   1          CVComp_Enable();    
+ 156   1      }
+ 157          
+ 158          
+ 159          /*******************************************************************************
+ 160          * Function Name: CVComp_Stop
+ 161          ********************************************************************************
+ 162          *
+ 163          * Summary:
+ 164          *  Powers down amplifier to lowest power state.
+ 165          *
+ 166          * Parameters:
+ 167          *  void
+ 168          *
+ 169          * Return:
+ 170          *  void
+ 171          *
+ 172          *******************************************************************************/
+ 173          void CVComp_Stop(void) 
+ 174          {
+ 175   1          /* Disable power to comparator */
+ 176   1          CVComp_PWRMGR &= ~CVComp_ACT_PWR_EN;
+ 177   1          CVComp_STBY_PWRMGR &= ~CVComp_STBY_PWR_EN;    
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 4   
+
+ 178   1      
+ 179   1          #if (CY_PSOC5A)
+                      /* Enable the variable */
+                      CVComp_restoreReg = 1u;
+              
+                      /* Save the control register before clearing it */
+                      CVComp_lowPowerBackup.compCRReg = CVComp_CR;
+                      CVComp_CR = CVComp_COMP_REG_CLR;
+                  #endif /* CY_PSOC5A */
+ 187   1      }
+ 188          
+ 189          
+ 190          /*******************************************************************************
+ 191          * Function Name: CVComp_SetSpeed
+ 192          ********************************************************************************
+ 193          *
+ 194          * Summary:
+ 195          *  This function sets the speed of the Analog Comparator. The faster the speed
+ 196          *  the more power that is used.
+ 197          *
+ 198          * Parameters:
+ 199          *  speed: (uint8) Sets operation mode of Comparator
+ 200          *
+ 201          * Return:
+ 202          *  void
+ 203          *
+ 204          *******************************************************************************/
+ 205          void CVComp_SetSpeed(uint8 speed) 
+ 206          {
+ 207   1          /* Clear and Set power level */    
+ 208   1          CVComp_CR = (CVComp_CR & ~CVComp_PWR_MODE_MASK) |
+ 209   1                                 (speed & CVComp_PWR_MODE_MASK);
+ 210   1      
+ 211   1          /* Set trim value for high speed comparator */
+ 212   1          if(speed == CVComp_HIGHSPEED)
+ 213   1          {
+ 214   2              /* PSoC5A */
+ 215   2              #if (CY_PSOC5A)
+                          CVComp_TR = CVComp_HS_TRIM_TR0;
+                      #endif /* CY_PSOC5A */
+ 218   2              
+ 219   2              /* PSoC3, PSoC5LP or later */
+ 220   2              #if (CY_PSOC3 || CY_PSOC5LP) 
+ 221   2                  CVComp_TR0 = CVComp_HS_TRIM_TR0;
+ 222   2                  CVComp_TR1 = CVComp_HS_TRIM_TR1;
+ 223   2              #endif /* CY_PSOC3 || CY_PSOC5LP */
+ 224   2          }
+ 225   1          else
+ 226   1          {
+ 227   2          /* PSoC5A */
+ 228   2              #if (CY_PSOC5A)
+                          CVComp_TR = CVComp_LS_TRIM_TR0;
+                      #endif /* CY_PSOC5A */
+ 231   2              
+ 232   2              /* PSoC3, PSoC5LP or later */
+ 233   2              #if (CY_PSOC3 || CY_PSOC5LP) 
+ 234   2                  CVComp_TR0 = CVComp_LS_TRIM_TR0;
+ 235   2                  CVComp_TR1 = CVComp_LS_TRIM_TR1;
+ 236   2              #endif /* CY_PSOC3 || CY_PSOC5LP */
+ 237   2          }
+ 238   1      
+ 239   1      }
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 5   
+
+ 240          
+ 241          
+ 242          /*******************************************************************************
+ 243          * Function Name: CVComp_GetCompare
+ 244          ********************************************************************************
+ 245          *
+ 246          * Summary:
+ 247          *  This function returns the comparator output value.
+ 248          *
+ 249          * Parameters:
+ 250          *   None
+ 251          *
+ 252          * Return:
+ 253          *  (uint8)  0  if Pos_Input less than Neg_input
+ 254          *           1  if Pos_Input greater than Neg_input.
+ 255          *
+ 256          *******************************************************************************/
+ 257          uint8 CVComp_GetCompare(void) 
+ 258          {
+ 259   1          return( CVComp_WRK & CVComp_CMP_OUT_MASK);
+ 260   1      }
+ 261          
+ 262          
+ 263          /*******************************************************************************
+ 264          * Function Name: CVComp_trimAdjust
+ 265          ********************************************************************************
+ 266          *
+ 267          * Summary:
+ 268          *  This function adjusts the value in the low nibble/high nibble of the Analog 
+ 269          *  Comparator trim register
+ 270          *
+ 271          * Parameters:  
+ 272          *  nibble:
+ 273          *      0 -- adjusts the value in the low nibble
+ 274          *      1 -- adjusts the value in the high nibble
+ 275          *
+ 276          * Return:
+ 277          *  None
+ 278          *
+ 279          * Theory: 
+ 280          *  Function assumes comparator block is setup for trim adjust.
+ 281          *  Intended to be called from Comp_ZeroCal()
+ 282          * 
+ 283          * Side Effects:
+ 284          *  Routine uses a course 1ms delay following each trim adjustment to allow 
+ 285          *  the comparator output to respond.
+ 286          *
+ 287          *******************************************************************************/
+ 288          void CVComp_trimAdjust(uint8 nibble) 
+ 289          {
+ 290   1          uint8 trimCnt, trimCntMax;
+ 291   1          uint8 cmpState;   
+ 292   1      
+ 293   1          /* get current state of comparator output */
+ 294   1          cmpState = CVComp_WRK & CVComp_CMP_OUT_MASK;
+ 295   1          
+ 296   1          if (nibble == 0u)
+ 297   1          {    
+ 298   2              /* if comparator output is high, negative offset adjust is required */
+ 299   2              if ( cmpState != 0u )
+ 300   2              {
+ 301   3                  /* PSoC5A */
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 6   
+
+ 302   3                  #if (CY_PSOC5A)
+                              CVComp_TR |= CVComp_CMP_TRIM1_DIR;
+                          #endif /* CY_PSOC5A */
+ 305   3                  
+ 306   3                  /* PSoC3, PSoC5LP or later */
+ 307   3                  #if (CY_PSOC3 || CY_PSOC5LP)
+ 308   3                      CVComp_TR0 |= CVComp_CMP_TR0_DIR;
+ 309   3                  #endif /* CY_PSOC3 || CY_PSOC5LP */
+ 310   3              }
+ 311   2          }
+ 312   1          else
+ 313   1          {
+ 314   2              /* if comparator output is low, positive offset adjust is required */
+ 315   2              if ( cmpState == 0u )
+ 316   2              {
+ 317   3                  /* PSoC5A */
+ 318   3                  #if (CY_PSOC5A)
+                              CVComp_TR |= CVComp_CMP_TRIM2_DIR; 
+                          #endif /* CY_PSOC5A */
+ 321   3                  
+ 322   3                  /* PSoC3, PSoC5LP or later */
+ 323   3                  #if (CY_PSOC3 || CY_PSOC5LP)
+ 324   3                      CVComp_TR1 |= CVComp_CMP_TR1_DIR;
+ 325   3                  #endif /* CY_PSOC3 || CY_PSOC5LP */
+ 326   3              }
+ 327   2          }
+ 328   1      
+ 329   1          /* Increment trim value until compare output changes state */
+ 330   1              
+ 331   1          /* PSoC5A */
+ 332   1              #if (CY_PSOC5A)
+                      trimCntMax = 7;
+                  #endif
+ 335   1              
+ 336   1              /* PSoC3, PSoC5LP or later */
+ 337   1              #if (CY_PSOC3 || CY_PSOC5LP)
+ 338   1              if(nibble == 0u)
+ 339   1              {
+ 340   2                      trimCntMax = 15;
+ 341   2              }
+ 342   1              else
+ 343   1              {
+ 344   2                      trimCntMax = 7;
+ 345   2              }
+ 346   1              #endif
+ 347   1              
+ 348   1          for ( trimCnt = 0; trimCnt < trimCntMax; trimCnt++ )
+ 349   1              {
+ 350   2              if (nibble == 0u)
+ 351   2              {
+ 352   3                  /* PSoC5A */
+ 353   3                  #if (CY_PSOC5A)
+                              CVComp_TR += 1u;
+                          #endif /* CY_PSOC5A */
+ 356   3                  
+ 357   3                  /* PSoC3, PSoC5LP or later */
+ 358   3                  #if (CY_PSOC3 || CY_PSOC5LP)
+ 359   3                      CVComp_TR0 += 1u;
+ 360   3                  #endif /* CY_PSOC3 || CY_PSOC5LP */
+ 361   3              }
+ 362   2              else
+ 363   2              {
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 7   
+
+ 364   3                  /* PSoC5A */
+ 365   3                  #if (CY_PSOC5A)
+                              CVComp_TR += 0x10u;
+                          #endif /* CY_PSOC5A */
+ 368   3                  
+ 369   3                  /* PSoC3, PSoC5LP or later */
+ 370   3                  #if (CY_PSOC3 || CY_PSOC5LP)
+ 371   3                      CVComp_TR1 += 1u;
+ 372   3                  #endif /* CY_PSOC3 || CY_PSOC5LP */
+ 373   3              }
+ 374   2              
+ 375   2              CyDelayUs(10);
+ 376   2              
+ 377   2              /* Check for change in comparator output */
+ 378   2              if ((CVComp_WRK & CVComp_CMP_OUT_MASK) != cmpState)
+ 379   2              {
+ 380   3                  break;      /* output changed state, trim phase is complete */
+ 381   3              }        
+ 382   2          }    
+ 383   1      }
+ 384          
+ 385          
+ 386          /*******************************************************************************
+ 387          * Function Name: CVComp_ZeroCal
+ 388          ********************************************************************************
+ 389          *
+ 390          * Summary:
+ 391          *  This function calibrates the offset of the Analog Comparator.
+ 392          *
+ 393          * Parameters:
+ 394          *  None
+ 395          *
+ 396          * Return:
+ 397          *  (uint16)  value written in trim register when calibration complete.
+ 398          *
+ 399          * Theory: 
+ 400          *  This function is used to optimize the calibration for user specific voltage
+ 401          *  range.  The comparator trim is adjusted to counter transistor offsets
+ 402          *   - offset is defined as positive if the output transitions to high before inP
+ 403          *     is greater than inN
+ 404          *   - offset is defined as negative if the output transitions to high after inP
+ 405          *     is greater than inP
+ 406          *
+ 407          *  PSoC5A
+ 408          *  The Analog Comparator provides 1 byte for offset trim.  The byte contains two
+ 409          *  4 bit trim fields - one is a course trim and the other allows smaller
+ 410          *  offset adjustments only for slow modes.
+ 411          *  - low nibble - fine trim
+ 412          *  - high nibble - course trim
+ 413          *  PSoC3, PSoC5LP or later
+ 414          *  The Analog Comparator provides 2 bytes for offset trim.  The bytes contain two
+ 415          *  5 bit trim fields - one is a course trim and the other allows smaller
+ 416          *  offset adjustments only for slow modes.
+ 417          *  - TR0 - fine trim
+ 418          *  - TR1 - course trim
+ 419          *
+ 420          *  Trim algorithm is a two phase process
+ 421          *  The first phase performs course offset adjustment
+ 422          *  The second phase serves one of two purposes depending on the outcome of the
+ 423          *  first phase
+ 424          *  - if the first trim value was maxed out without a comparator output 
+ 425          *    transition, more offset will be added by adjusting the second trim value.
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 8   
+
+ 426          *  - if the first trim phase resulted in a comparator output transition, the
+ 427          *    second trim value will serve as fine trim (in the opposite direction)to
+ 428          *    ensure the offset is < 1 mV.
+ 429          *
+ 430          * Trim Process:   
+ 431          *  1) User applies a voltage to the negative input.  Voltage should be in the
+ 432          *     comparator operating range or an average of the operating voltage range.
+ 433          *  2) Clear registers associated with analog routing to the positive input.
+ 434          *  3) Disable Hysteresis
+ 435          *  4) Set the calibration bit to short the negative and positive inputs to
+ 436          *     the users calibration voltage.
+ 437          *  5) Clear the TR register  ( TR = 0x00 )
+ 438          *  ** LOW MODES
+ 439          *  6) Check if compare output is high, if so, set the MSb of course trim field 
+ 440          *     to a 1.
+ 441          *  7) Increment the course trim field until the compare output changes
+ 442          *  8) Check if compare output is low, if so, set the MSb of fine trim field
+ 443          *     to a 1.
+ 444          *  9) Increment the fine trim field until the compare output changes
+ 445          *  ** FAST MODE - skip the steps 8,9
+ 446          *
+ 447          * Side Effects:
+ 448          *  Routine clears analog routing associated with the comparator positive input.  
+ 449          *  This may affect routing of signals from other components that are connected
+ 450          *  to the positive input of the comparator.
+ 451          *
+ 452          *******************************************************************************/
+ 453          uint16 CVComp_ZeroCal(void) 
+ 454          {
+ 455   1          uint8 tmpSW0;
+ 456   1          uint8 tmpSW2;
+ 457   1          uint8 tmpSW3;
+ 458   1          uint8 tmpCR;
+ 459   1      
+ 460   1          /* Save a copy of routing registers associated with inP */
+ 461   1          tmpSW0 = CVComp_SW0;
+ 462   1          tmpSW2 = CVComp_SW2;
+ 463   1          tmpSW3 = CVComp_SW3;
+ 464   1      
+ 465   1           /* Clear routing for inP, retain routing for inN */
+ 466   1          CVComp_SW0 = 0x00u;
+ 467   1          CVComp_SW2 = 0x00u;
+ 468   1          CVComp_SW3 = tmpSW3 & ~CVComp_CMP_SW3_INPCTL_MASK;
+ 469   1      
+ 470   1          /* Preserve original configuration
+ 471   1           * - turn off Hysteresis
+ 472   1           * - set calibration bit - shorts inN to inP
+ 473   1          */
+ 474   1          tmpCR = CVComp_CR;
+ 475   1          CVComp_CR |= (CVComp_CAL_ON | CVComp_HYST_OFF);
+ 476   1          
+ 477   1          /* Write default low values to trim register - no offset adjust */
+ 478   1          /* PSoC5A */
+ 479   1          #if (CY_PSOC5A)
+                      CVComp_TR = CVComp_DEFAULT_CMP_TRIM;
+                  #endif /* CY_PSOC5A */
+ 482   1          
+ 483   1          /* PSoC3, PSoC5LP or later */
+ 484   1          #if (CY_PSOC3 || CY_PSOC5LP)
+ 485   1              CVComp_TR0 = CVComp_DEFAULT_CMP_TRIM;
+ 486   1              CVComp_TR1 = CVComp_DEFAULT_CMP_TRIM;
+ 487   1          #endif /* CY_PSOC3 || CY_PSOC5LP */
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 9   
+
+ 488   1              
+ 489   1              /* Two phase trim - slow modes, one phase trim - for fast */ 
+ 490   1          if ( (CVComp_CR & CVComp_PWR_MODE_MASK) == CVComp_PWR_MODE_FAST)
+ 491   1          {
+ 492   2              CVComp_trimAdjust(0);
+ 493   2          }
+ 494   1          else /* default to trim for fast modes */
+ 495   1          {
+ 496   2              CVComp_trimAdjust(1);
+ 497   2                      CVComp_trimAdjust(0);
+ 498   2          }
+ 499   1         
+ 500   1          /* Restore Config Register */
+ 501   1          CVComp_CR = tmpCR;
+ 502   1          
+ 503   1          /* Restore routing registers for inP */
+ 504   1          CVComp_SW0 = tmpSW0;
+ 505   1          CVComp_SW2 = tmpSW2;
+ 506   1          CVComp_SW3 = tmpSW3;
+ 507   1          
+ 508   1          /* PSoC5A */
+ 509   1          #if (CY_PSOC5A)
+                      return (uint16) CVComp_TR;
+                  #endif /* CY_PSOC5A */
+ 512   1          
+ 513   1          /* PSoC3, PSoC5LP or later */
+ 514   1          #if (CY_PSOC3 || CY_PSOC5LP)
+ 515   1              return (((uint16)CVComp_TR1 << 8) | (CVComp_TR0));        
+ 516   1          #endif /* CY_PSOC3 || CY_PSOC5LP */
+ 517   1      }
+ 518          
+ 519          
+ 520          /*******************************************************************************
+ 521          * Function Name: CVComp_LoadTrim
+ 522          ********************************************************************************
+ 523          *
+ 524          * Summary:
+ 525          *  This function stores a value in the Analog Comparator trim register.
+ 526          *
+ 527          * Parameters:  
+ 528          *  uint8 trimVal - trim value.  This value is the same format as the value 
+ 529          *  returned by the _ZeroCal routine.
+ 530          *
+ 531          * Return:
+ 532          *  None
+ 533          *
+ 534          *******************************************************************************/
+ 535          void CVComp_LoadTrim(uint16 trimVal) 
+ 536          {
+ 537   1          /* Stores value in the Analog Comparator trim register */
+ 538   1          /* PSoC5A */
+ 539   1          #if (CY_PSOC5A)
+                      CVComp_TR = (uint8) trimVal;
+                  #endif /* CY_PSOC5A */
+ 542   1          
+ 543   1          /* PSoC3, PSoC5LP or later */
+ 544   1          #if (CY_PSOC3 || CY_PSOC5LP)
+ 545   1              /* Stores value in the Analog Comparator trim register for P-type load */
+ 546   1              CVComp_TR0 = (uint8) trimVal;
+ 547   1              
+ 548   1              /* Stores value in the Analog Comparator trim register for N-type load */
+ 549   1              CVComp_TR1 = (uint8) (trimVal >> 8); 
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 10  
+
+ 550   1          #endif /* CY_PSOC3 || CY_PSOC5LP */
+ 551   1      }
+ 552          
+ 553          
+ 554          #if (CY_PSOC3 || CY_PSOC5LP)
+ 555          
+ 556              /*******************************************************************************
+ 557              * Function Name: CVComp_PwrDwnOverrideEnable
+ 558              ********************************************************************************
+ 559              *
+ 560              * Summary:
+ 561              *  This is the power down over-ride feature. This function ignores sleep 
+ 562              *  parameter and allows the component to stay active during sleep mode.
+ 563              *
+ 564              * Parameters:
+ 565              *  None
+ 566              *
+ 567              * Return:
+ 568              *  None
+ 569              *
+ 570              *******************************************************************************/
+ 571              void CVComp_PwrDwnOverrideEnable(void) 
+ 572              {
+ 573   1              /* Set the pd_override bit in CMP_CR register */
+ 574   1              CVComp_CR |= CVComp_PWRDWN_OVRD;
+ 575   1          }
+ 576          
+ 577          
+ 578              /*******************************************************************************
+ 579              * Function Name: CVComp_PwrDwnOverrideDisable
+ 580              ********************************************************************************
+ 581              *
+ 582              * Summary:
+ 583              *  This is the power down over-ride feature. This allows the component to stay
+ 584              *  inactive during sleep.
+ 585              *
+ 586              * Parameters:
+ 587              *  None
+ 588              *
+ 589              * Return:
+ 590              *  None
+ 591              *
+ 592              *******************************************************************************/
+ 593              void CVComp_PwrDwnOverrideDisable(void) 
+ 594              {
+ 595   1              /* Reset the pd_override bit in CMP_CR register */
+ 596   1              CVComp_CR &= ~CVComp_PWRDWN_OVRD;
+ 597   1          }
+ 598          #endif /* (CY_PSOC3 || CY_PSOC5LP) */
+ 599          
+ 600          
+ 601          /* [] END OF FILE */
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 11  
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION CVComp_Init (BEGIN)
+                                           ; SOURCE LINE # 49
+                                           ; SOURCE LINE # 50
+                                           ; SOURCE LINE # 52
+0000 7F01              MOV     R7,#01H
+0002 120000      R     LCALL   _CVComp_SetSpeed
+                                           ; SOURCE LINE # 55
+                                           ; SOURCE LINE # 56
+                                           ; SOURCE LINE # 57
+0005 905842            MOV     DPTR,#05842H
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A EF                MOV     A,R7
+000B 4420              ORL     A,#020H
+000D FF                MOV     R7,A
+000E EF                MOV     A,R7
+000F F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 58
+0010 800B              SJMP    ?C0002
+0012         ?C0001:
+                                           ; SOURCE LINE # 60
+                                           ; SOURCE LINE # 61
+0012 905842            MOV     DPTR,#05842H
+0015 E0                MOVX    A,@DPTR
+0016 FF                MOV     R7,A
+0017 EF                MOV     A,R7
+0018 54DF              ANL     A,#0DFH
+001A FF                MOV     R7,A
+001B EF                MOV     A,R7
+001C F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 62
+001D         ?C0002:
+                                           ; SOURCE LINE # 67
+                                           ; SOURCE LINE # 68
+                                           ; SOURCE LINE # 69
+001D 905842            MOV     DPTR,#05842H
+0020 E0                MOVX    A,@DPTR
+0021 FF                MOV     R7,A
+0022 EF                MOV     A,R7
+0023 54FB              ANL     A,#0FBH
+0025 FF                MOV     R7,A
+0026 EF                MOV     A,R7
+0027 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 70
+0028 800B              SJMP    ?C0004
+002A         ?C0003:
+                                           ; SOURCE LINE # 72
+                                           ; SOURCE LINE # 73
+002A 905842            MOV     DPTR,#05842H
+002D E0                MOVX    A,@DPTR
+002E FF                MOV     R7,A
+002F EF                MOV     A,R7
+0030 4404              ORL     A,#04H
+0032 FF                MOV     R7,A
+0033 EF                MOV     A,R7
+0034 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 74
+0035         ?C0004:
+                                           ; SOURCE LINE # 78
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 12  
+
+0035 905842            MOV     DPTR,#05842H
+0038 E0                MOVX    A,@DPTR
+0039 FF                MOV     R7,A
+003A EF                MOV     A,R7
+003B 4408              ORL     A,#08H
+003D FF                MOV     R7,A
+003E EF                MOV     A,R7
+003F F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 81
+0040 905AD7            MOV     DPTR,#05AD7H
+0043 E0                MOVX    A,@DPTR
+0044 FF                MOV     R7,A
+0045 EF                MOV     A,R7
+0046 54E7              ANL     A,#0E7H
+0048 FF                MOV     R7,A
+0049 EF                MOV     A,R7
+004A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 82
+                                           ; SOURCE LINE # 83
+                                           ; SOURCE LINE # 84
+004B 905AD7            MOV     DPTR,#05AD7H
+004E E0                MOVX    A,@DPTR
+004F FF                MOV     R7,A
+0050 EF                MOV     A,R7
+0051 4408              ORL     A,#08H
+0053 FF                MOV     R7,A
+0054 EF                MOV     A,R7
+0055 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 85
+0056 22                RET     
+0057         ?C0005:
+                                           ; SOURCE LINE # 87
+                                           ; SOURCE LINE # 88
+0057 905AD7            MOV     DPTR,#05AD7H
+005A E0                MOVX    A,@DPTR
+005B FF                MOV     R7,A
+005C EF                MOV     A,R7
+005D 4410              ORL     A,#010H
+005F FF                MOV     R7,A
+0060 EF                MOV     A,R7
+0061 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 89
+0062         ?C0006:
+                                           ; SOURCE LINE # 90
+0062         ?C0007:
+0062 22                RET     
+             ; FUNCTION CVComp_Init (END)
+
+             ; FUNCTION CVComp_Enable (BEGIN)
+                                           ; SOURCE LINE # 107
+                                           ; SOURCE LINE # 108
+                                           ; SOURCE LINE # 109
+0000 9043A7            MOV     DPTR,#043A7H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 4404              ORL     A,#04H
+0008 FF                MOV     R7,A
+0009 EF                MOV     A,R7
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 110
+000B 9043B7            MOV     DPTR,#043B7H
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 13  
+
+000E E0                MOVX    A,@DPTR
+000F FF                MOV     R7,A
+0010 EF                MOV     A,R7
+0011 4404              ORL     A,#04H
+0013 FF                MOV     R7,A
+0014 EF                MOV     A,R7
+0015 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 123
+0016         ?C0008:
+0016 22                RET     
+             ; FUNCTION CVComp_Enable (END)
+
+             ; FUNCTION CVComp_Start (BEGIN)
+                                           ; SOURCE LINE # 144
+                                           ; SOURCE LINE # 145
+                                           ; SOURCE LINE # 147
+0000 900000      R     MOV     DPTR,#CVComp_initVar
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 7009              JNZ     ?C0009
+                                           ; SOURCE LINE # 148
+                                           ; SOURCE LINE # 149
+0008 120000      R     LCALL   CVComp_Init
+                                           ; SOURCE LINE # 151
+000B 900000      R     MOV     DPTR,#CVComp_initVar
+000E 7401              MOV     A,#01H
+0010 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 152
+0011         ?C0009:
+                                           ; SOURCE LINE # 155
+0011 120000      R     LCALL   CVComp_Enable
+                                           ; SOURCE LINE # 156
+0014         ?C0010:
+0014 22                RET     
+             ; FUNCTION CVComp_Start (END)
+
+             ; FUNCTION CVComp_Stop (BEGIN)
+                                           ; SOURCE LINE # 173
+                                           ; SOURCE LINE # 174
+                                           ; SOURCE LINE # 176
+0000 9043A7            MOV     DPTR,#043A7H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 54FB              ANL     A,#0FBH
+0008 FF                MOV     R7,A
+0009 EF                MOV     A,R7
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 177
+000B 9043B7            MOV     DPTR,#043B7H
+000E E0                MOVX    A,@DPTR
+000F FF                MOV     R7,A
+0010 EF                MOV     A,R7
+0011 54FB              ANL     A,#0FBH
+0013 FF                MOV     R7,A
+0014 EF                MOV     A,R7
+0015 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 187
+0016         ?C0011:
+0016 22                RET     
+             ; FUNCTION CVComp_Stop (END)
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 14  
+
+
+             ; FUNCTION _CVComp_SetSpeed (BEGIN)
+                                           ; SOURCE LINE # 205
+0000 900000      R     MOV     DPTR,#speed
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 206
+                                           ; SOURCE LINE # 208
+0005 900000      R     MOV     DPTR,#speed
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A EF                MOV     A,R7
+000B 5403              ANL     A,#03H
+000D FF                MOV     R7,A
+000E 905842            MOV     DPTR,#05842H
+0011 E0                MOVX    A,@DPTR
+0012 FE                MOV     R6,A
+0013 EE                MOV     A,R6
+0014 54FC              ANL     A,#0FCH
+0016 FE                MOV     R6,A
+0017 EE                MOV     A,R6
+0018 4F                ORL     A,R7
+0019 FF                MOV     R7,A
+001A 905842            MOV     DPTR,#05842H
+001D EF                MOV     A,R7
+001E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 212
+001F 900000      R     MOV     DPTR,#speed
+0022 E0                MOVX    A,@DPTR
+0023 FF                MOV     R7,A
+0024 EF                MOV     A,R7
+0025 B4011D            CJNE    A,#01H,?C0012
+                                           ; SOURCE LINE # 213
+                                           ; SOURCE LINE # 221
+0028 7B0C              MOV     R3,#0CH
+002A 7A01              MOV     R2,#01H
+002C 7912              MOV     R1,#012H
+002E 120000      E     LCALL   _cyread8
+0031 904634            MOV     DPTR,#04634H
+0034 EF                MOV     A,R7
+0035 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 222
+0036 7B0C              MOV     R3,#0CH
+0038 7A01              MOV     R2,#01H
+003A 7916              MOV     R1,#016H
+003C 120000      E     LCALL   _cyread8
+003F 904635            MOV     DPTR,#04635H
+0042 EF                MOV     A,R7
+0043 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 224
+0044 22                RET     
+0045         ?C0012:
+                                           ; SOURCE LINE # 226
+                                           ; SOURCE LINE # 234
+0045 7B0C              MOV     R3,#0CH
+0047 7A01              MOV     R2,#01H
+0049 79B1              MOV     R1,#0B1H
+004B 120000      E     LCALL   _cyread8
+004E 904634            MOV     DPTR,#04634H
+0051 EF                MOV     A,R7
+0052 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 235
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 15  
+
+0053 7B0C              MOV     R3,#0CH
+0055 7A01              MOV     R2,#01H
+0057 79B9              MOV     R1,#0B9H
+0059 120000      E     LCALL   _cyread8
+005C 904635            MOV     DPTR,#04635H
+005F EF                MOV     A,R7
+0060 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 237
+0061         ?C0013:
+                                           ; SOURCE LINE # 239
+0061         ?C0014:
+0061 22                RET     
+             ; FUNCTION _CVComp_SetSpeed (END)
+
+             ; FUNCTION CVComp_GetCompare (BEGIN)
+                                           ; SOURCE LINE # 257
+                                           ; SOURCE LINE # 258
+                                           ; SOURCE LINE # 259
+0000 905B96            MOV     DPTR,#05B96H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 5404              ANL     A,#04H
+0008 FF                MOV     R7,A
+                                           ; SOURCE LINE # 260
+0009         ?C0015:
+0009 22                RET     
+             ; FUNCTION CVComp_GetCompare (END)
+
+             ; FUNCTION _CVComp_trimAdjust (BEGIN)
+                                           ; SOURCE LINE # 288
+0000 900000      R     MOV     DPTR,#nibble
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 289
+                                           ; SOURCE LINE # 294
+0005 905B96            MOV     DPTR,#05B96H
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A EF                MOV     A,R7
+000B 5404              ANL     A,#04H
+000D FF                MOV     R7,A
+000E 900000      R     MOV     DPTR,#cmpState
+0011 EF                MOV     A,R7
+0012 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 296
+0013 900000      R     MOV     DPTR,#nibble
+0016 E0                MOVX    A,@DPTR
+0017 FF                MOV     R7,A
+0018 EF                MOV     A,R7
+0019 7015              JNZ     ?C0016
+                                           ; SOURCE LINE # 297
+                                           ; SOURCE LINE # 299
+001B 900000      R     MOV     DPTR,#cmpState
+001E E0                MOVX    A,@DPTR
+001F FF                MOV     R7,A
+0020 EF                MOV     A,R7
+0021 6020              JZ      ?C0018
+                                           ; SOURCE LINE # 300
+                                           ; SOURCE LINE # 308
+0023 904634            MOV     DPTR,#04634H
+0026 E0                MOVX    A,@DPTR
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 16  
+
+0027 FF                MOV     R7,A
+0028 EF                MOV     A,R7
+0029 4410              ORL     A,#010H
+002B FF                MOV     R7,A
+002C EF                MOV     A,R7
+002D F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 310
+002E         ?C0017:
+                                           ; SOURCE LINE # 311
+002E 8013              SJMP    ?C0018
+0030         ?C0016:
+                                           ; SOURCE LINE # 313
+                                           ; SOURCE LINE # 315
+0030 900000      R     MOV     DPTR,#cmpState
+0033 E0                MOVX    A,@DPTR
+0034 FF                MOV     R7,A
+0035 EF                MOV     A,R7
+0036 700B              JNZ     ?C0018
+                                           ; SOURCE LINE # 316
+                                           ; SOURCE LINE # 324
+0038 904635            MOV     DPTR,#04635H
+003B E0                MOVX    A,@DPTR
+003C FF                MOV     R7,A
+003D EF                MOV     A,R7
+003E 4410              ORL     A,#010H
+0040 FF                MOV     R7,A
+0041 EF                MOV     A,R7
+0042 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 326
+0043         ?C0019:
+                                           ; SOURCE LINE # 327
+0043         ?C0018:
+                                           ; SOURCE LINE # 338
+0043 900000      R     MOV     DPTR,#nibble
+0046 E0                MOVX    A,@DPTR
+0047 FF                MOV     R7,A
+0048 EF                MOV     A,R7
+0049 7008              JNZ     ?C0020
+                                           ; SOURCE LINE # 339
+                                           ; SOURCE LINE # 340
+004B 900000      R     MOV     DPTR,#trimCntMax
+004E 740F              MOV     A,#0FH
+0050 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 341
+0051 8006              SJMP    ?C0021
+0053         ?C0020:
+                                           ; SOURCE LINE # 343
+                                           ; SOURCE LINE # 344
+0053 900000      R     MOV     DPTR,#trimCntMax
+0056 7407              MOV     A,#07H
+0058 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 345
+0059         ?C0021:
+                                           ; SOURCE LINE # 348
+0059 900000      R     MOV     DPTR,#trimCnt
+005C E4                CLR     A
+005D F0                MOVX    @DPTR,A
+005E         ?C0022:
+005E 900000      R     MOV     DPTR,#trimCntMax
+0061 E0                MOVX    A,@DPTR
+0062 FF                MOV     R7,A
+0063 900000      R     MOV     DPTR,#trimCnt
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 17  
+
+0066 E0                MOVX    A,@DPTR
+0067 FE                MOV     R6,A
+0068 EE                MOV     A,R6
+0069 C3                CLR     C
+006A 9F                SUBB    A,R7
+006B 503F              JNC     ?C0028
+                                           ; SOURCE LINE # 349
+                                           ; SOURCE LINE # 350
+006D 900000      R     MOV     DPTR,#nibble
+0070 E0                MOVX    A,@DPTR
+0071 FF                MOV     R7,A
+0072 EF                MOV     A,R7
+0073 7008              JNZ     ?C0025
+                                           ; SOURCE LINE # 351
+                                           ; SOURCE LINE # 359
+0075 904634            MOV     DPTR,#04634H
+0078 E0                MOVX    A,@DPTR
+0079 04                INC     A
+007A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 361
+007B 8006              SJMP    ?C0026
+007D         ?C0025:
+                                           ; SOURCE LINE # 363
+                                           ; SOURCE LINE # 371
+007D 904635            MOV     DPTR,#04635H
+0080 E0                MOVX    A,@DPTR
+0081 04                INC     A
+0082 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 373
+0083         ?C0026:
+                                           ; SOURCE LINE # 375
+0083 7F0A              MOV     R7,#0AH
+0085 7E00              MOV     R6,#00H
+0087 120000      E     LCALL   _CyDelayUs
+                                           ; SOURCE LINE # 378
+008A 905B96            MOV     DPTR,#05B96H
+008D E0                MOVX    A,@DPTR
+008E FF                MOV     R7,A
+008F EF                MOV     A,R7
+0090 5404              ANL     A,#04H
+0092 FF                MOV     R7,A
+0093 7E00              MOV     R6,#00H
+0095 900000      R     MOV     DPTR,#cmpState
+0098 E0                MOVX    A,@DPTR
+0099 FD                MOV     R5,A
+009A 7C00              MOV     R4,#00H
+009C EF                MOV     A,R7
+009D B5050C            CJNE    A,AR5,?C0028
+00A0 EE                MOV     A,R6
+00A1 B50408            CJNE    A,AR4,?C0028
+                                           ; SOURCE LINE # 379
+                                           ; SOURCE LINE # 380
+                                           ; SOURCE LINE # 381
+00A4         ?C0027:
+                                           ; SOURCE LINE # 382
+00A4         ?C0024:
+00A4 900000      R     MOV     DPTR,#trimCnt
+00A7 E0                MOVX    A,@DPTR
+00A8 04                INC     A
+00A9 F0                MOVX    @DPTR,A
+00AA 80B2              SJMP    ?C0022
+00AC         ?C0023:
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 18  
+
+                                           ; SOURCE LINE # 383
+00AC         ?C0028:
+00AC 22                RET     
+             ; FUNCTION _CVComp_trimAdjust (END)
+
+             ; FUNCTION CVComp_ZeroCal (BEGIN)
+                                           ; SOURCE LINE # 453
+                                           ; SOURCE LINE # 454
+                                           ; SOURCE LINE # 461
+0000 905AD0            MOV     DPTR,#05AD0H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 900000      R     MOV     DPTR,#tmpSW0
+0008 EF                MOV     A,R7
+0009 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 462
+000A 905AD2            MOV     DPTR,#05AD2H
+000D E0                MOVX    A,@DPTR
+000E FF                MOV     R7,A
+000F 900000      R     MOV     DPTR,#tmpSW2
+0012 EF                MOV     A,R7
+0013 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 463
+0014 905AD3            MOV     DPTR,#05AD3H
+0017 E0                MOVX    A,@DPTR
+0018 FF                MOV     R7,A
+0019 900000      R     MOV     DPTR,#tmpSW3
+001C EF                MOV     A,R7
+001D F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 466
+001E 905AD0            MOV     DPTR,#05AD0H
+0021 E4                CLR     A
+0022 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 467
+0023 905AD2            MOV     DPTR,#05AD2H
+0026 E4                CLR     A
+0027 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 468
+0028 900000      R     MOV     DPTR,#tmpSW3
+002B E0                MOVX    A,@DPTR
+002C FF                MOV     R7,A
+002D EF                MOV     A,R7
+002E 54F6              ANL     A,#0F6H
+0030 FF                MOV     R7,A
+0031 905AD3            MOV     DPTR,#05AD3H
+0034 EF                MOV     A,R7
+0035 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 474
+0036 905842            MOV     DPTR,#05842H
+0039 E0                MOVX    A,@DPTR
+003A FF                MOV     R7,A
+003B 900000      R     MOV     DPTR,#tmpCR
+003E EF                MOV     A,R7
+003F F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 475
+0040 905842            MOV     DPTR,#05842H
+0043 E0                MOVX    A,@DPTR
+0044 FF                MOV     R7,A
+0045 EF                MOV     A,R7
+0046 4430              ORL     A,#030H
+0048 FF                MOV     R7,A
+0049 EF                MOV     A,R7
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 19  
+
+004A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 485
+004B 904634            MOV     DPTR,#04634H
+004E E4                CLR     A
+004F F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 486
+0050 904635            MOV     DPTR,#04635H
+0053 E4                CLR     A
+0054 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 490
+0055 905842            MOV     DPTR,#05842H
+0058 E0                MOVX    A,@DPTR
+0059 FF                MOV     R7,A
+005A EF                MOV     A,R7
+005B 5403              ANL     A,#03H
+005D FF                MOV     R7,A
+005E 7E00              MOV     R6,#00H
+0060 EF                MOV     A,R7
+0061 6401              XRL     A,#01H
+0063 4E                ORL     A,R6
+0064 7007              JNZ     ?C0029
+                                           ; SOURCE LINE # 491
+                                           ; SOURCE LINE # 492
+0066 7F00              MOV     R7,#00H
+0068 120000      R     LCALL   _CVComp_trimAdjust
+                                           ; SOURCE LINE # 493
+006B 800A              SJMP    ?C0030
+006D         ?C0029:
+                                           ; SOURCE LINE # 495
+                                           ; SOURCE LINE # 496
+006D 7F01              MOV     R7,#01H
+006F 120000      R     LCALL   _CVComp_trimAdjust
+                                           ; SOURCE LINE # 497
+0072 7F00              MOV     R7,#00H
+0074 120000      R     LCALL   _CVComp_trimAdjust
+                                           ; SOURCE LINE # 498
+0077         ?C0030:
+                                           ; SOURCE LINE # 501
+0077 900000      R     MOV     DPTR,#tmpCR
+007A E0                MOVX    A,@DPTR
+007B FF                MOV     R7,A
+007C 905842            MOV     DPTR,#05842H
+007F EF                MOV     A,R7
+0080 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 504
+0081 900000      R     MOV     DPTR,#tmpSW0
+0084 E0                MOVX    A,@DPTR
+0085 FF                MOV     R7,A
+0086 905AD0            MOV     DPTR,#05AD0H
+0089 EF                MOV     A,R7
+008A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 505
+008B 900000      R     MOV     DPTR,#tmpSW2
+008E E0                MOVX    A,@DPTR
+008F FF                MOV     R7,A
+0090 905AD2            MOV     DPTR,#05AD2H
+0093 EF                MOV     A,R7
+0094 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 506
+0095 900000      R     MOV     DPTR,#tmpSW3
+0098 E0                MOVX    A,@DPTR
+0099 FF                MOV     R7,A
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 20  
+
+009A 905AD3            MOV     DPTR,#05AD3H
+009D EF                MOV     A,R7
+009E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 515
+009F 904635            MOV     DPTR,#04635H
+00A2 E0                MOVX    A,@DPTR
+00A3 FF                MOV     R7,A
+00A4 7E00              MOV     R6,#00H
+00A6 EF                MOV     A,R7
+00A7 7F00              MOV     R7,#00H
+00A9 FE                MOV     R6,A
+00AA 904634            MOV     DPTR,#04634H
+00AD E0                MOVX    A,@DPTR
+00AE FD                MOV     R5,A
+00AF 7C00              MOV     R4,#00H
+00B1 EE                MOV     A,R6
+00B2 4C                ORL     A,R4
+00B3 FE                MOV     R6,A
+00B4 EF                MOV     A,R7
+00B5 4D                ORL     A,R5
+00B6 FF                MOV     R7,A
+                                           ; SOURCE LINE # 517
+00B7         ?C0031:
+00B7 22                RET     
+             ; FUNCTION CVComp_ZeroCal (END)
+
+             ; FUNCTION _CVComp_LoadTrim (BEGIN)
+                                           ; SOURCE LINE # 535
+0000 900000      R     MOV     DPTR,#trimVal
+0003 EE                MOV     A,R6
+0004 F0                MOVX    @DPTR,A
+0005 A3                INC     DPTR
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 536
+                                           ; SOURCE LINE # 546
+0008 900000      R     MOV     DPTR,#trimVal
+000B E0                MOVX    A,@DPTR
+000C FE                MOV     R6,A
+000D A3                INC     DPTR
+000E E0                MOVX    A,@DPTR
+000F FF                MOV     R7,A
+0010 904634            MOV     DPTR,#04634H
+0013 EF                MOV     A,R7
+0014 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 549
+0015 900000      R     MOV     DPTR,#trimVal
+0018 E0                MOVX    A,@DPTR
+0019 FE                MOV     R6,A
+001A A3                INC     DPTR
+001B E0                MOVX    A,@DPTR
+001C FF                MOV     R7,A
+001D EE                MOV     A,R6
+001E FF                MOV     R7,A
+001F 7E00              MOV     R6,#00H
+0021 904635            MOV     DPTR,#04635H
+0024 EF                MOV     A,R7
+0025 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 551
+0026         ?C0032:
+0026 22                RET     
+             ; FUNCTION _CVComp_LoadTrim (END)
+C51 COMPILER V9.03   CVCOMP                                                                04/04/2015 14:09:19 PAGE 21  
+
+
+             ; FUNCTION CVComp_PwrDwnOverrideEnable (BEGIN)
+                                           ; SOURCE LINE # 571
+                                           ; SOURCE LINE # 572
+                                           ; SOURCE LINE # 574
+0000 905842            MOV     DPTR,#05842H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 4404              ORL     A,#04H
+0008 FF                MOV     R7,A
+0009 EF                MOV     A,R7
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 575
+000B         ?C0033:
+000B 22                RET     
+             ; FUNCTION CVComp_PwrDwnOverrideEnable (END)
+
+             ; FUNCTION CVComp_PwrDwnOverrideDisable (BEGIN)
+                                           ; SOURCE LINE # 593
+                                           ; SOURCE LINE # 594
+                                           ; SOURCE LINE # 596
+0000 905842            MOV     DPTR,#05842H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 54FB              ANL     A,#0FBH
+0008 FF                MOV     R7,A
+0009 EF                MOV     A,R7
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 597
+000B         ?C0034:
+000B 22                RET     
+             ; FUNCTION CVComp_PwrDwnOverrideDisable (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    694    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     12    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

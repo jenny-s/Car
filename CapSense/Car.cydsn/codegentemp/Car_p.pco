@@ -1,0 +1,124 @@
+dont_use_io iocell 1 0
+dont_use_io iocell 1 1
+dont_use_io iocell 1 3
+set_location "\SensorTimer:TimerUDB:sT32:timerdp:u1\" datapathcell 3 3 2 
+set_location "\CapSense:ClockGen:sC8:PRSdp:u0\" datapathcell 3 1 2 
+set_location "\MotorPWM:PWMUDB:sP16:pwmdp:u0\" datapathcell 0 5 2 
+set_location "\ServoPWM:PWMUDB:sP16:pwmdp:u0\" datapathcell 1 2 2 
+set_location "\CapSense:Net_1603\" macrocell 2 2 1 0
+set_location "\SensorTimer:TimerUDB:rstSts:stsreg\" statusicell 2 3 4 
+set_location "\LineCounter:CounterUDB:count_enable\" macrocell 3 5 1 0
+set_location "\SensorTimer:TimerUDB:sT32:timerdp:u2\" datapathcell 3 2 2 
+set_location "\MotorPWM:PWMUDB:final_kill_reg\" macrocell 1 2 0 1
+set_location "\CapSense:MeasureCH0:UDB:Counter:u0\" datapathcell 2 0 2 
+set_location "\LineCounter:CounterUDB:overflow_reg_i\" macrocell 2 4 0 3
+set_location "Net_657" macrocell 1 5 0 1
+set_location "Net_1125" macrocell 1 2 1 0
+set_location "\CapSense:MeasureCH0:wndState_0\" macrocell 2 2 0 1
+set_location "\CapSense:mrst\" macrocell 2 2 0 3
+set_location "\SensorTimer:TimerUDB:status_tc\" macrocell 2 3 0 0
+set_location "\LineCounter:CounterUDB:sC32:counterdp:u3\" datapathcell 2 4 2 
+set_location "\LineCounter:CounterUDB:status_2\" macrocell 2 4 0 1
+set_location "\CapSense:ClockGen:clock_detect_reg\" macrocell 3 1 1 0
+set_location "\CapSense:MeasureCH0:cs_addr_win_1\" macrocell 2 1 0 2
+set_location "\CapSense:MeasureCH0:wndState_1\" macrocell 2 1 1 0
+set_location "\MotorPWM:PWMUDB:status_5\" macrocell 1 2 0 2
+set_location "\CapSense:MeasureCH0:cs_addr_cnt_2\" macrocell 2 0 0 1
+set_location "Net_978" macrocell 2 4 0 2
+set_location "\TapeTimer:TimerUDB:int_capt_count_1\" macrocell 1 3 0 0
+set_location "Net_1140" macrocell 1 4 1 0
+set_location "\CapSense:MeasureCH0:wndState_2\" macrocell 2 1 0 1
+set_location "\LineCounter:CounterUDB:count_stored_i\" macrocell 3 5 1 2
+set_location "\LineCounter:CounterUDB:reload\" macrocell 2 5 0 1
+set_location "\CapSense:ClockGen:cstate_2\" macrocell 2 2 1 3
+set_location "\TapeTimer:TimerUDB:run_mode\" macrocell 0 3 1 0
+set_location "\LineCounter:CounterUDB:sC32:counterdp:u0\" datapathcell 2 5 2 
+set_location "\MotorPWM:PWMUDB:prevCompare1\" macrocell 1 5 0 2
+set_location "\ServoPWM:PWMUDB:prevCompare1\" macrocell 1 2 1 1
+set_location "\TapeTimer:TimerUDB:sT32:timerdp:u3\" datapathcell 0 4 2 
+set_location "\CapSense:MeasureCH0:cs_addr_win_2\" macrocell 2 1 1 2
+set_location "\CapSense:ClockGen:tmp_ppulse_reg\" macrocell 3 0 0 2
+set_location "MODIN2_0" macrocell 3 3 0 1
+set_location "\SensorTimer:TimerUDB:capt_int_temp\" macrocell 3 3 0 2
+set_location "\CapSense:ClockGen:tmp_ppulse_dly\" macrocell 3 1 0 3
+set_location "\LineCounter:CounterUDB:sC32:counterdp:u1\" datapathcell 3 5 2 
+set_location "\LineCounter:CounterUDB:status_0\" macrocell 2 4 1 3
+set_location "\TapeTimer:TimerUDB:capt_int_temp\" macrocell 0 3 0 0
+set_location "\TapeTimer:TimerUDB:sT32:timerdp:u2\" datapathcell 1 4 2 
+set_location "\TapeTimer:TimerUDB:capture_last\" macrocell 0 4 1 2
+set_location "\MotorPWM:PWMUDB:sSTSReg:rstSts:stsreg\" statusicell 1 5 4 
+set_location "\ServoPWM:PWMUDB:sSTSReg:rstSts:stsreg\" statusicell 1 2 4 
+set_location "\TapeTimer:TimerUDB:status_tc\" macrocell 0 4 0 2
+set_location "\SensorTimer:TimerUDB:sT32:timerdp:u3\" datapathcell 2 2 2 
+set_location "\MotorPWM:PWMUDB:sP16:pwmdp:u1\" datapathcell 1 5 2 
+set_location "\ServoPWM:PWMUDB:sP16:pwmdp:u1\" datapathcell 0 2 2 
+set_location "\MotorPWM:PWMUDB:status_0\" macrocell 1 5 0 3
+set_location "\ServoPWM:PWMUDB:status_0\" macrocell 1 2 0 3
+set_location "\SensorTimer:TimerUDB:capture_last\" macrocell 3 5 0 2
+set_location "\CapSense:PreChargeClk\" macrocell 3 1 1 2
+set_location "\LineCounter:CounterUDB:sC32:counterdp:u2\" datapathcell 3 4 2 
+set_location "\SensorTimer:TimerUDB:sT32:timerdp:u0\" datapathcell 2 3 2 
+set_location "__ONE__" macrocell 1 0 0 3
+set_location "\CapSense:ClockGen:ScanSpeed\" count7cell 2 1 7 
+set_location "\TapeTimer:TimerUDB:int_capt_count_0\" macrocell 1 3 1 2
+set_location "\CapSense:MeasureCH0:cs_addr_cnt_0\" macrocell 2 0 0 2
+set_location "MODIN2_1" macrocell 3 3 1 1
+set_location "\MotorPWM:PWMUDB:runmode_enable\" macrocell 1 5 1 2
+set_location "\ServoPWM:PWMUDB:runmode_enable\" macrocell 1 2 0 0
+set_location "\TapeTimer:TimerUDB:sT32:timerdp:u0\" datapathcell 0 3 2 
+set_location "\TapeTimer:TimerUDB:sT32:timerdp:u1\" datapathcell 1 3 2 
+set_location "\LineCounter:CounterUDB:sSTSReg:rstSts:stsreg\" statusicell 2 4 4 
+set_location "\CapSense:MeasureCH0:cs_addr_win_0\" macrocell 2 0 1 0
+set_location "\CapSense:ClockGen:UDB:PrescalerDp:u0\" datapathcell 3 0 2 
+set_location "\TapeTimer:TimerUDB:capt_fifo_load\" macrocell 0 4 1 0
+set_location "Net_942" macrocell 2 5 0 0
+set_location "\CapSense:MeasureCH0:cs_addr_cnt_1\" macrocell 2 0 0 0
+set_location "\SensorTimer:TimerUDB:capt_fifo_load\" macrocell 3 4 0 3
+set_location "\CapSense:ClockGen:inter_reset\" macrocell 2 2 1 2
+set_location "\CapSense:MeasureCH0:UDB:Window:u0\" datapathcell 2 1 2 
+set_location "\TapeTimer:TimerUDB:rstSts:stsreg\" statusicell 0 4 4 
+set_location "\TapeTimer:TimerUDB:sCTRLReg:SyncCtl:ctrlreg\" controlcell 0 3 6 
+set_location "\CapSense:IsrCH0\" interrupt -1 -1 5
+set_location "FrameInterrupt" interrupt -1 -1 0
+set_io "Pin_vSynch(0)" iocell 4 7
+set_location "CapSense" capsensecell -1 -1 0
+set_io "\LCD:LCDPort(3)\" iocell 2 3
+set_io "\CapSense:PortCH0(3)\" iocell 5 1
+set_io "\LCD:LCDPort(2)\" iocell 2 2
+set_io "\CapSense:PortCH0(2)\" iocell 5 0
+set_io "\LCD:LCDPort(5)\" iocell 2 5
+set_io "\CapSense:PortCH0(5)\" iocell 5 3
+set_io "\LCD:LCDPort(4)\" iocell 2 4
+set_io "\CapSense:PortCH0(4)\" iocell 5 2
+set_io "\LCD:LCDPort(1)\" iocell 2 1
+set_io "\CapSense:PortCH0(1)\" iocell 5 5
+set_io "Pin_Camera(0)" iocell 4 0
+set_io "Pin_Vref(0)" iocell 6 5
+set_io "\CapSense:CmodCH0(0)\" iocell 6 4
+set_io "\CapSense:PortCH0(0)\" iocell 5 6
+set_io "\LCD:LCDPort(0)\" iocell 2 0
+set_io "\LCD:LCDPort(6)\" iocell 2 6
+set_io "\CapSense:PortCH0(6)\" iocell 5 4
+set_location "TapeInterrupt" interrupt -1 -1 4
+set_location "SensorInterrupt" interrupt -1 -1 3
+set_location "\CapSense:CompCH0:ctComp\" comparatorcell -1 -1 0
+set_location "\CapSense:MeasureCH0:genblk1:SyncCMPR\" synccell 2 0 5 0
+set_location "\CapSense:BufCH0\" csabufcell -1 -1 0
+set_io "Button_left(0)" iocell 6 1
+set_location "\CVComp:ctComp\" comparatorcell -1 -1 2
+set_location "\LineCounter:CounterUDB:sCTRLReg:SyncCtl:ctrlreg\" controlcell 3 5 6 
+set_location "\SensorTimer:TimerUDB:sCTRLReg:SyncCtl:ctrlreg\" controlcell 3 3 6 
+set_location "\MotorPWM:PWMUDB:sCTRLReg:SyncCtl:ctrlreg\" controlcell 1 5 6 
+set_location "\ServoPWM:PWMUDB:sCTRLReg:SyncCtl:ctrlreg\" controlcell 1 2 6 
+set_location "\CapSense:IdacCH0:viDAC8\" vidaccell -1 -1 2
+set_io "Pin_sensor(0)" iocell 4 2
+# Note: port 12 is the logical name for port 7
+set_io "Pin_servo(0)" iocell 12 2
+set_io "Pin_CompositeSynch(0)" iocell 4 5
+set_location "ClockBlock" clockblockcell -1 -1 0
+set_location "\CapSense:ClockGen:SyncCtrl:CtrlReg\" controlcell 2 2 6 
+# Note: port 15 is the logical name for port 8
+set_io "Button_right(0)" iocell 15 5
+set_io "Pin_motor_for(0)" iocell 4 6
+set_location "LeftButtonInterrupt" interrupt -1 -1 1
+set_location "RightButtonInterrupt" interrupt -1 -1 2

@@ -1,0 +1,641 @@
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE VREFDAC
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\VrefDAC.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\Gene
+                    -rated_Source\PSoC3\VrefDAC.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\VrefDAC.lst) CD DB NOIP OT(0) INCDI
+                    -R(Generated_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\VrefDAC.obj)
+
+line level    source
+
+   1          /*******************************************************************************
+   2          * File Name: VrefDAC.c  
+   3          * Version 1.80
+   4          *
+   5          * Description:
+   6          *  This file provides the source code to the API for the 8-bit Voltage DAC 
+   7          *  (VDAC8) User Module.
+   8          *
+   9          * Note:
+  10          *  Any unusual or non-standard behavior should be noted here. Other-
+  11          *  wise, this section should remain blank.
+  12          *
+  13          ********************************************************************************
+  14          * Copyright 2008-2012, Cypress Semiconductor Corporation.  All rights reserved.
+  15          * You may use this file only in accordance with the license, terms, conditions, 
+  16          * disclaimers, and limitations in the end user license agreement accompanying 
+  17          * the software package with which this file was provided.
+  18          *******************************************************************************/
+  19          
+  20          #include "cytypes.h"
+  21          #include "VrefDAC.h"
+  22          
+  23          #if (CY_PSOC5A)
+              #include <CyLib.h>
+              #endif /* CY_PSOC5A */
+  26          
+  27          uint8 VrefDAC_initVar = 0;
+  28          
+  29          #if (CY_PSOC5A)
+                  uint8 VrefDAC_restoreVal = 0;
+                  uint8 VrefDAC_intrStatus = 0u;
+              #endif /* CY_PSOC5A */
+  33          
+  34          #if (CY_PSOC5A)
+                  static VrefDAC_backupStruct VrefDAC_backup;
+              #endif /* CY_PSOC5A */
+  37          
+  38          
+  39          /*******************************************************************************
+  40          * Function Name: VrefDAC_Init
+  41          ********************************************************************************
+  42          * Summary:
+  43          *  Initialize to the schematic state.
+  44          * 
+  45          * Parameters:
+  46          *  void:
+  47          *
+  48          * Return:
+  49          *  void
+  50          *
+  51          * Theory:
+  52          *
+  53          * Side Effects:
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 2   
+
+  54          *
+  55          *******************************************************************************/
+  56          void VrefDAC_Init(void) 
+  57          {
+  58   1          VrefDAC_CR0 = (VrefDAC_MODE_V );
+  59   1      
+  60   1          /* Set default data source */
+  61   1          if(VrefDAC_DEFAULT_DATA_SRC != 0 )
+  62   1          {
+  63   2              VrefDAC_CR1 = (VrefDAC_DEFAULT_CNTL | VrefDAC_DACBUS_ENABLE) ;
+  64   2          }
+  65   1          else
+  66   1          {
+  67   2              VrefDAC_CR1 = (VrefDAC_DEFAULT_CNTL | VrefDAC_DACBUS_DISABLE) ;
+  68   2          }
+  69   1      
+  70   1          /* Set default strobe mode */
+  71   1          if(VrefDAC_DEFAULT_STRB != 0)
+  72   1          {
+  73   2              VrefDAC_Strobe |= VrefDAC_STRB_EN ;
+  74   2          }
+  75   1      
+  76   1          /* Set default range */
+  77   1          VrefDAC_SetRange(VrefDAC_DEFAULT_RANGE); 
+  78   1      
+  79   1          /* Set default speed */
+  80   1          VrefDAC_SetSpeed(VrefDAC_DEFAULT_SPEED);
+  81   1      }
+  82          
+  83          
+  84          /*******************************************************************************
+  85          * Function Name: VrefDAC_Enable
+  86          ********************************************************************************
+  87          * Summary:
+  88          *  Enable the VDAC8
+  89          * 
+  90          * Parameters:
+  91          *  void
+  92          *
+  93          * Return:
+  94          *  void
+  95          *
+  96          * Theory:
+  97          *
+  98          * Side Effects:
+  99          *
+ 100          *******************************************************************************/
+ 101          void VrefDAC_Enable(void) 
+ 102          {
+ 103   1          VrefDAC_PWRMGR |= VrefDAC_ACT_PWR_EN;
+ 104   1          VrefDAC_STBY_PWRMGR |= VrefDAC_STBY_PWR_EN;
+ 105   1      
+ 106   1          /*This is to restore the value of register CR0 ,
+ 107   1          which is modified  in Stop API , this prevents misbehaviour of VDAC */
+ 108   1          #if (CY_PSOC5A)
+                      if(VrefDAC_restoreVal == 1) 
+                      {
+                           VrefDAC_CR0 = VrefDAC_backup.data_value;
+                           VrefDAC_restoreVal = 0;
+                      }
+                  #endif /* CY_PSOC5A */
+ 115   1      }
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 3   
+
+ 116          
+ 117          
+ 118          /*******************************************************************************
+ 119          * Function Name: VrefDAC_Start
+ 120          ********************************************************************************
+ 121          *
+ 122          * Summary:
+ 123          *  The start function initializes the voltage DAC with the default values, 
+ 124          *  and sets the power to the given level.  A power level of 0, is the same as
+ 125          *  executing the stop function.
+ 126          *
+ 127          * Parameters:
+ 128          *  Power: Sets power level between off (0) and (3) high power
+ 129          *
+ 130          * Return:
+ 131          *  void 
+ 132          *
+ 133          * Global variables:
+ 134          *  VrefDAC_initVar: Is modified when this function is called for the 
+ 135          *  first time. Is used to ensure that initialization happens only once.
+ 136          *
+ 137          *******************************************************************************/
+ 138          void VrefDAC_Start(void)  
+ 139          {
+ 140   1          /* Hardware initiazation only needs to occure the first time */
+ 141   1          if(VrefDAC_initVar == 0)
+ 142   1          { 
+ 143   2              VrefDAC_Init();
+ 144   2              VrefDAC_initVar = 1;
+ 145   2          }
+ 146   1      
+ 147   1          /* Enable power to DAC */
+ 148   1          VrefDAC_Enable();
+ 149   1      
+ 150   1          /* Set default value */
+ 151   1          VrefDAC_SetValue(VrefDAC_DEFAULT_DATA); 
+ 152   1      }
+ 153          
+ 154          
+ 155          /*******************************************************************************
+ 156          * Function Name: VrefDAC_Stop
+ 157          ********************************************************************************
+ 158          *
+ 159          * Summary:
+ 160          *  Powers down DAC to lowest power state.
+ 161          *
+ 162          * Parameters:
+ 163          *  void
+ 164          *
+ 165          * Return:
+ 166          *  void
+ 167          *
+ 168          * Theory:
+ 169          *
+ 170          * Side Effects:
+ 171          *
+ 172          *******************************************************************************/
+ 173          void VrefDAC_Stop(void) 
+ 174          {
+ 175   1          /* Disble power to DAC */
+ 176   1          VrefDAC_PWRMGR &= ~VrefDAC_ACT_PWR_EN;
+ 177   1          VrefDAC_STBY_PWRMGR &= ~VrefDAC_STBY_PWR_EN;
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 4   
+
+ 178   1      
+ 179   1          /* This is a work around for PSoC5A  ,
+ 180   1          this sets VDAC to current mode with output off */
+ 181   1          #if (CY_PSOC5A)
+                      VrefDAC_backup.data_value = VrefDAC_CR0;
+                      VrefDAC_CR0 = VrefDAC_CUR_MODE_OUT_OFF;
+                      VrefDAC_restoreVal = 1;
+                  #endif /* CY_PSOC5A */
+ 186   1      }
+ 187          
+ 188          
+ 189          /*******************************************************************************
+ 190          * Function Name: VrefDAC_SetSpeed
+ 191          ********************************************************************************
+ 192          *
+ 193          * Summary:
+ 194          *  Set DAC speed
+ 195          *
+ 196          * Parameters:
+ 197          *  power: Sets speed value
+ 198          *
+ 199          * Return:
+ 200          *  void
+ 201          *
+ 202          * Theory:
+ 203          *
+ 204          * Side Effects:
+ 205          *
+ 206          *******************************************************************************/
+ 207          void VrefDAC_SetSpeed(uint8 speed) 
+ 208          {
+ 209   1          /* Clear power mask then write in new value */
+ 210   1          VrefDAC_CR0 &= ~VrefDAC_HS_MASK ;
+ 211   1          VrefDAC_CR0 |=  ( speed & VrefDAC_HS_MASK) ;
+ 212   1      }
+ 213          
+ 214          
+ 215          /*******************************************************************************
+ 216          * Function Name: VrefDAC_SetRange
+ 217          ********************************************************************************
+ 218          *
+ 219          * Summary:
+ 220          *  Set one of three current ranges.
+ 221          *
+ 222          * Parameters:
+ 223          *  Range: Sets one of Three valid ranges.
+ 224          *
+ 225          * Return:
+ 226          *  void 
+ 227          *
+ 228          * Theory:
+ 229          *
+ 230          * Side Effects:
+ 231          *
+ 232          *******************************************************************************/
+ 233          void VrefDAC_SetRange(uint8 range) 
+ 234          {
+ 235   1          VrefDAC_CR0 &= ~VrefDAC_RANGE_MASK ;      /* Clear existing mode */
+ 236   1          VrefDAC_CR0 |= ( range & VrefDAC_RANGE_MASK ) ; /*  Set Range  */
+ 237   1          VrefDAC_DacTrim();
+ 238   1      }
+ 239          
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 5   
+
+ 240          
+ 241          /*******************************************************************************
+ 242          * Function Name: VrefDAC_SetValue
+ 243          ********************************************************************************
+ 244          *
+ 245          * Summary:
+ 246          *  Set 8-bit DAC value
+ 247          *
+ 248          * Parameters:  
+ 249          *  value:  Sets DAC value between 0 and 255.
+ 250          *
+ 251          * Return: 
+ 252          *  void 
+ 253          *
+ 254          * Theory: 
+ 255          *
+ 256          * Side Effects:
+ 257          *
+ 258          *******************************************************************************/
+ 259          void VrefDAC_SetValue(uint8 value) 
+ 260          {
+ 261   1          #if (CY_PSOC5A)
+                      VrefDAC_intrStatus = CyEnterCriticalSection();
+                  #endif /* CY_PSOC5A */
+ 264   1      
+ 265   1          VrefDAC_Data = value;                /*  Set Value  */
+ 266   1      
+ 267   1          /* PSOC5A requires a double write */
+ 268   1          /* Exit Critical Section */
+ 269   1          #if (CY_PSOC5A)
+                      VrefDAC_Data = value;
+                      CyExitCriticalSection(VrefDAC_intrStatus);
+                  #endif /* CY_PSOC5A */
+ 273   1      }
+ 274          
+ 275          
+ 276          /*******************************************************************************
+ 277          * Function Name: VrefDAC_DacTrim
+ 278          ********************************************************************************
+ 279          *
+ 280          * Summary:
+ 281          *  Set the trim value for the given range.
+ 282          *
+ 283          * Parameters:
+ 284          *  range:  1V or 4V range.  See constants.
+ 285          *
+ 286          * Return:
+ 287          *  void
+ 288          *
+ 289          * Theory: 
+ 290          *
+ 291          * Side Effects:
+ 292          *
+ 293          *******************************************************************************/
+ 294          void VrefDAC_DacTrim(void) 
+ 295          {
+ 296   1          uint8 mode;
+ 297   1      
+ 298   1          mode = ((VrefDAC_CR0 & VrefDAC_RANGE_MASK) >> 2) + VrefDAC_TRIM_M7_1V_RNG_OFFSET;
+ 299   1          VrefDAC_TR = CY_GET_XTND_REG8((uint8 *)(VrefDAC_DAC_TRIM_BASE + mode));
+ 300   1      }
+ 301          
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 6   
+
+ 302          
+ 303          /* [] END OF FILE */
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 7   
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION VrefDAC_Init (BEGIN)
+                                           ; SOURCE LINE # 56
+                                           ; SOURCE LINE # 57
+                                           ; SOURCE LINE # 58
+0000 90582C            MOV     DPTR,#0582CH
+0003 E4                CLR     A
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 61
+0005 8008              SJMP    ?C0001
+                                           ; SOURCE LINE # 62
+                                           ; SOURCE LINE # 63
+0007 90582D            MOV     DPTR,#0582DH
+000A 7420              MOV     A,#020H
+000C F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 64
+000D 8012              SJMP    ?C0003
+000F         ?C0001:
+                                           ; SOURCE LINE # 66
+                                           ; SOURCE LINE # 67
+000F 90582D            MOV     DPTR,#0582DH
+0012 E4                CLR     A
+0013 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 68
+0014         ?C0002:
+                                           ; SOURCE LINE # 71
+0014 800B              SJMP    ?C0003
+                                           ; SOURCE LINE # 72
+                                           ; SOURCE LINE # 73
+0016 905A9F            MOV     DPTR,#05A9FH
+0019 E0                MOVX    A,@DPTR
+001A FF                MOV     R7,A
+001B EF                MOV     A,R7
+001C 4408              ORL     A,#08H
+001E FF                MOV     R7,A
+001F EF                MOV     A,R7
+0020 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 74
+0021         ?C0003:
+                                           ; SOURCE LINE # 77
+0021 7F00              MOV     R7,#00H
+0023 120000      R     LCALL   _VrefDAC_SetRange
+                                           ; SOURCE LINE # 80
+0026 7F02              MOV     R7,#02H
+0028 120000      R     LCALL   _VrefDAC_SetSpeed
+                                           ; SOURCE LINE # 81
+002B         ?C0004:
+002B 22                RET     
+             ; FUNCTION VrefDAC_Init (END)
+
+             ; FUNCTION VrefDAC_Enable (BEGIN)
+                                           ; SOURCE LINE # 101
+                                           ; SOURCE LINE # 102
+                                           ; SOURCE LINE # 103
+0000 9043A8            MOV     DPTR,#043A8H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 4408              ORL     A,#08H
+0008 FF                MOV     R7,A
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 8   
+
+0009 EF                MOV     A,R7
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 104
+000B 9043B8            MOV     DPTR,#043B8H
+000E E0                MOVX    A,@DPTR
+000F FF                MOV     R7,A
+0010 EF                MOV     A,R7
+0011 4408              ORL     A,#08H
+0013 FF                MOV     R7,A
+0014 EF                MOV     A,R7
+0015 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 115
+0016         ?C0005:
+0016 22                RET     
+             ; FUNCTION VrefDAC_Enable (END)
+
+             ; FUNCTION VrefDAC_Start (BEGIN)
+                                           ; SOURCE LINE # 138
+                                           ; SOURCE LINE # 139
+                                           ; SOURCE LINE # 141
+0000 900000      R     MOV     DPTR,#VrefDAC_initVar
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 7009              JNZ     ?C0006
+                                           ; SOURCE LINE # 142
+                                           ; SOURCE LINE # 143
+0008 120000      R     LCALL   VrefDAC_Init
+                                           ; SOURCE LINE # 144
+000B 900000      R     MOV     DPTR,#VrefDAC_initVar
+000E 7401              MOV     A,#01H
+0010 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 145
+0011         ?C0006:
+                                           ; SOURCE LINE # 148
+0011 120000      R     LCALL   VrefDAC_Enable
+                                           ; SOURCE LINE # 151
+0014 7F5A              MOV     R7,#05AH
+0016 120000      R     LCALL   _VrefDAC_SetValue
+                                           ; SOURCE LINE # 152
+0019         ?C0007:
+0019 22                RET     
+             ; FUNCTION VrefDAC_Start (END)
+
+             ; FUNCTION VrefDAC_Stop (BEGIN)
+                                           ; SOURCE LINE # 173
+                                           ; SOURCE LINE # 174
+                                           ; SOURCE LINE # 176
+0000 9043A8            MOV     DPTR,#043A8H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 54F7              ANL     A,#0F7H
+0008 FF                MOV     R7,A
+0009 EF                MOV     A,R7
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 177
+000B 9043B8            MOV     DPTR,#043B8H
+000E E0                MOVX    A,@DPTR
+000F FF                MOV     R7,A
+0010 EF                MOV     A,R7
+0011 54F7              ANL     A,#0F7H
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 9   
+
+0013 FF                MOV     R7,A
+0014 EF                MOV     A,R7
+0015 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 186
+0016         ?C0008:
+0016 22                RET     
+             ; FUNCTION VrefDAC_Stop (END)
+
+             ; FUNCTION _VrefDAC_SetSpeed (BEGIN)
+                                           ; SOURCE LINE # 207
+0000 900000      R     MOV     DPTR,#speed
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 208
+                                           ; SOURCE LINE # 210
+0005 90582C            MOV     DPTR,#0582CH
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A EF                MOV     A,R7
+000B 54FD              ANL     A,#0FDH
+000D FF                MOV     R7,A
+000E EF                MOV     A,R7
+000F F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 211
+0010 90582C            MOV     DPTR,#0582CH
+0013 C083              PUSH    DPH
+0015 C082              PUSH    DPL
+0017 E0                MOVX    A,@DPTR
+0018 FF                MOV     R7,A
+0019 900000      R     MOV     DPTR,#speed
+001C E0                MOVX    A,@DPTR
+001D FE                MOV     R6,A
+001E EE                MOV     A,R6
+001F 5402              ANL     A,#02H
+0021 FE                MOV     R6,A
+0022 EF                MOV     A,R7
+0023 4E                ORL     A,R6
+0024 FF                MOV     R7,A
+0025 D082              POP     DPL
+0027 D083              POP     DPH
+0029 EF                MOV     A,R7
+002A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 212
+002B         ?C0009:
+002B 22                RET     
+             ; FUNCTION _VrefDAC_SetSpeed (END)
+
+             ; FUNCTION _VrefDAC_SetRange (BEGIN)
+                                           ; SOURCE LINE # 233
+0000 900000      R     MOV     DPTR,#range
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 234
+                                           ; SOURCE LINE # 235
+0005 90582C            MOV     DPTR,#0582CH
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A EF                MOV     A,R7
+000B 54F3              ANL     A,#0F3H
+000D FF                MOV     R7,A
+000E EF                MOV     A,R7
+000F F0                MOVX    @DPTR,A
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 10  
+
+                                           ; SOURCE LINE # 236
+0010 90582C            MOV     DPTR,#0582CH
+0013 C083              PUSH    DPH
+0015 C082              PUSH    DPL
+0017 E0                MOVX    A,@DPTR
+0018 FF                MOV     R7,A
+0019 900000      R     MOV     DPTR,#range
+001C E0                MOVX    A,@DPTR
+001D FE                MOV     R6,A
+001E EE                MOV     A,R6
+001F 540C              ANL     A,#0CH
+0021 FE                MOV     R6,A
+0022 EF                MOV     A,R7
+0023 4E                ORL     A,R6
+0024 FF                MOV     R7,A
+0025 D082              POP     DPL
+0027 D083              POP     DPH
+0029 EF                MOV     A,R7
+002A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 237
+002B 120000      R     LCALL   VrefDAC_DacTrim
+                                           ; SOURCE LINE # 238
+002E         ?C0010:
+002E 22                RET     
+             ; FUNCTION _VrefDAC_SetRange (END)
+
+             ; FUNCTION _VrefDAC_SetValue (BEGIN)
+                                           ; SOURCE LINE # 259
+0000 900000      R     MOV     DPTR,#value
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 260
+                                           ; SOURCE LINE # 265
+0005 900000      R     MOV     DPTR,#value
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A 905B83            MOV     DPTR,#05B83H
+000D EF                MOV     A,R7
+000E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 273
+000F         ?C0011:
+000F 22                RET     
+             ; FUNCTION _VrefDAC_SetValue (END)
+
+             ; FUNCTION VrefDAC_DacTrim (BEGIN)
+                                           ; SOURCE LINE # 294
+                                           ; SOURCE LINE # 295
+                                           ; SOURCE LINE # 298
+0000 90582C            MOV     DPTR,#0582CH
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 540C              ANL     A,#0CH
+0008 FF                MOV     R7,A
+0009 7E00              MOV     R6,#00H
+000B EF                MOV     A,R7
+000C 7802              MOV     R0,#02H
+000E         ?C0013:
+000E CE                XCH     A,R6
+000F C3                CLR     C
+0010 13                RRC     A
+0011 CE                XCH     A,R6
+C51 COMPILER V9.03   VREFDAC                                                               03/27/2015 05:19:20 PAGE 11  
+
+0012 13                RRC     A
+0013 D8F9              DJNZ    R0,?C0013
+0015 FF                MOV     R7,A
+0016 EF                MOV     A,R7
+0017 2406              ADD     A,#06H
+0019 FF                MOV     R7,A
+001A 900000      R     MOV     DPTR,#mode
+001D EF                MOV     A,R7
+001E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 299
+001F 900000      R     MOV     DPTR,#mode
+0022 E0                MOVX    A,@DPTR
+0023 FF                MOV     R7,A
+0024 E4                CLR     A
+0025 FC                MOV     R4,A
+0026 FD                MOV     R5,A
+0027 FE                MOV     R6,A
+0028 EF                MOV     A,R7
+0029 2438              ADD     A,#038H
+002B FF                MOV     R7,A
+002C EE                MOV     A,R6
+002D 3401              ADDC    A,#01H
+002F FE                MOV     R6,A
+0030 ED                MOV     A,R5
+0031 340C              ADDC    A,#0CH
+0033 FD                MOV     R5,A
+0034 EC                MOV     A,R4
+0035 3400              ADDC    A,#00H
+0037 FC                MOV     R4,A
+0038 A907              MOV     R1,AR7
+003A AA06              MOV     R2,AR6
+003C AB05              MOV     R3,AR5
+003E 120000      E     LCALL   _cyread8
+0041 90460B            MOV     DPTR,#0460BH
+0044 EF                MOV     A,R7
+0045 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 300
+0046         ?C0012:
+0046 22                RET     
+             ; FUNCTION VrefDAC_DacTrim (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    294    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      5    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

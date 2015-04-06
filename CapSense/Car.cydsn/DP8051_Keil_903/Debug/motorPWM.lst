@@ -1,0 +1,952 @@
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE MOTORPWM
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\motorPWM.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\Gene
+                    -rated_Source\PSoC3\motorPWM.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\motorPWM.lst) CD DB NOIP OT(0) INC
+                    -DIR(Generated_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\motorPWM.obj)
+
+line level    source
+
+   1          /*******************************************************************************
+   2          * File Name: MotorPWM.c  
+   3          * Version 2.20
+   4          *
+   5          * Description:
+   6          *  The PWM User Module consist of an 8 or 16-bit counter with two 8 or 16-bit
+   7          *  comparitors. Each instance of this user module is capable of generating
+   8          *  two PWM outputs with the same period. The pulse width is selectable between
+   9          *  1 and 255/65535. The period is selectable between 2 and 255/65536 clocks. 
+  10          *  The compare value output may be configured to be active when the present 
+  11          *  counter is less than or less than/equal to the compare value.
+  12          *  A terminal count output is also provided. It generates a pulse one clock
+  13          *  width wide when the counter is equal to zero.
+  14          *
+  15          * Note:
+  16          *
+  17          *******************************************************************************
+  18          * Copyright 2008-2012, Cypress Semiconductor Corporation.  All rights reserved.
+  19          * You may use this file only in accordance with the license, terms, conditions, 
+  20          * disclaimers, and limitations in the end user license agreement accompanying 
+  21          * the software package with which this file was provided.
+  22          ********************************************************************************/
+  23          
+  24          #include "cytypes.h"
+  25          #include "MotorPWM.h"
+  26          
+  27          uint8 MotorPWM_initVar = 0u;
+  28          
+  29          
+  30          /*******************************************************************************
+  31          * Function Name: MotorPWM_Start
+  32          ********************************************************************************
+  33          *
+  34          * Summary:
+  35          *  The start function initializes the pwm with the default values, the 
+  36          *  enables the counter to begin counting.  It does not enable interrupts,
+  37          *  the EnableInt command should be called if interrupt generation is required.
+  38          *
+  39          * Parameters:  
+  40          *  void  
+  41          *
+  42          * Return: 
+  43          *  void
+  44          *
+  45          * Global variables:
+  46          *  MotorPWM_initVar: Is modified when this function is called for the 
+  47          *   first time. Is used to ensure that initialization happens only once.
+  48          *
+  49          *******************************************************************************/
+  50          void MotorPWM_Start(void) 
+  51          {
+  52   1          /* If not Initialized then initialize all required hardware and software */
+  53   1          if(MotorPWM_initVar == 0u)
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 2   
+
+  54   1          {
+  55   2              MotorPWM_Init();
+  56   2              MotorPWM_initVar = 1u;
+  57   2          }
+  58   1          MotorPWM_Enable();
+  59   1      
+  60   1      }
+  61          
+  62          
+  63          /*******************************************************************************
+  64          * Function Name: MotorPWM_Init
+  65          ********************************************************************************
+  66          *
+  67          * Summary:
+  68          *  Initialize component's parameters to the parameters set by user in the 
+  69          *  customizer of the component placed onto schematic. Usually called in 
+  70          *  MotorPWM_Start().
+  71          *
+  72          * Parameters:  
+  73          *  void
+  74          *
+  75          * Return: 
+  76          *  void
+  77          *
+  78          *******************************************************************************/
+  79          void MotorPWM_Init(void) 
+  80          {
+  81   1          #if (MotorPWM_UsingFixedFunction || MotorPWM_UseControl)
+  82   1              uint8 ctrl;
+  83   1          #endif /* (MotorPWM_UsingFixedFunction || MotorPWM_UseControl) */
+  84   1          
+  85   1          #if(!MotorPWM_UsingFixedFunction) 
+  86   1              #if(MotorPWM_UseStatus)
+  87   1                  /* Interrupt State Backup for Critical Region*/
+  88   1                  uint8 MotorPWM_interruptState;
+  89   1              #endif /* (MotorPWM_UseStatus) */
+  90   1          #endif /* (!MotorPWM_UsingFixedFunction) */
+  91   1          
+  92   1          #if (MotorPWM_UsingFixedFunction)
+                      /* You are allowed to write the compare value (FF only) */
+                      MotorPWM_CONTROL |= MotorPWM_CFG0_MODE;
+                      #if (MotorPWM_DeadBand2_4)
+                          MotorPWM_CONTROL |= MotorPWM_CFG0_DB;
+                      #endif /* (MotorPWM_DeadBand2_4) */
+                              
+                      /* Set the default Compare Mode */
+                      #if(CY_PSOC5A)
+                              ctrl = MotorPWM_CONTROL2 & ~MotorPWM_CTRL_CMPMODE1_MASK;
+                              MotorPWM_CONTROL2 = ctrl | MotorPWM_DEFAULT_COMPARE1_MODE;
+                      #endif /* (CY_PSOC5A) */
+                      #if(CY_PSOC3 || CY_PSOC5LP)
+                              ctrl = MotorPWM_CONTROL3 & ~MotorPWM_CTRL_CMPMODE1_MASK;
+                              MotorPWM_CONTROL3 = ctrl | MotorPWM_DEFAULT_COMPARE1_MODE;
+                      #endif /* (CY_PSOC3 || CY_PSOC5LP) */
+                      
+                       /* Clear and Set SYNCTC and SYNCCMP bits of RT1 register */
+                      MotorPWM_RT1 &= ~MotorPWM_RT1_MASK;
+                      MotorPWM_RT1 |= MotorPWM_SYNC;     
+                              
+                      /*Enable DSI Sync all all inputs of the PWM*/
+                      MotorPWM_RT1 &= ~(MotorPWM_SYNCDSI_MASK);
+                      MotorPWM_RT1 |= MotorPWM_SYNCDSI_EN;
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 3   
+
+                     
+                  #elif (MotorPWM_UseControl)
+ 118   1              /* Set the default compare mode defined in the parameter */
+ 119   1              ctrl = MotorPWM_CONTROL & ~MotorPWM_CTRL_CMPMODE2_MASK & ~MotorPWM_CTRL_CMPMODE1_MASK;
+ 120   1              MotorPWM_CONTROL = ctrl | MotorPWM_DEFAULT_COMPARE2_MODE | 
+ 121   1                                         MotorPWM_DEFAULT_COMPARE1_MODE;
+ 122   1          #endif /* (MotorPWM_UsingFixedFunction) */
+ 123   1              
+ 124   1          #if (!MotorPWM_UsingFixedFunction)
+ 125   1              #if (MotorPWM_Resolution == 8)
+                          /* Set FIFO 0 to 1 byte register for period*/
+                          MotorPWM_AUX_CONTROLDP0 |= (MotorPWM_AUX_CTRL_FIFO0_CLR);
+                      #else /* (MotorPWM_Resolution == 16)*/
+ 129   1                  /* Set FIFO 0 to 1 byte register for period */
+ 130   1                  MotorPWM_AUX_CONTROLDP0 |= (MotorPWM_AUX_CTRL_FIFO0_CLR);
+ 131   1                  MotorPWM_AUX_CONTROLDP1 |= (MotorPWM_AUX_CTRL_FIFO0_CLR);
+ 132   1              #endif /* (MotorPWM_Resolution == 8) */
+ 133   1      
+ 134   1              MotorPWM_WriteCounter(MotorPWM_INIT_PERIOD_VALUE);
+ 135   1          #endif /* (!MotorPWM_UsingFixedFunction) */
+ 136   1              
+ 137   1          MotorPWM_WritePeriod(MotorPWM_INIT_PERIOD_VALUE);
+ 138   1      
+ 139   1              #if (MotorPWM_UseOneCompareMode)
+ 140   1                  MotorPWM_WriteCompare(MotorPWM_INIT_COMPARE_VALUE1);
+ 141   1              #else
+                          MotorPWM_WriteCompare1(MotorPWM_INIT_COMPARE_VALUE1);
+                          MotorPWM_WriteCompare2(MotorPWM_INIT_COMPARE_VALUE2);
+                      #endif /* (MotorPWM_UseOneCompareMode) */
+ 145   1              
+ 146   1              #if (MotorPWM_KillModeMinTime)
+                          MotorPWM_WriteKillTime(MotorPWM_MinimumKillTime);
+                      #endif /* (MotorPWM_KillModeMinTime) */
+ 149   1              
+ 150   1              #if (MotorPWM_DeadBandUsed)
+                          MotorPWM_WriteDeadTime(MotorPWM_INIT_DEAD_TIME);
+                      #endif /* (MotorPWM_DeadBandUsed) */
+ 153   1      
+ 154   1          #if (MotorPWM_UseStatus || MotorPWM_UsingFixedFunction)
+ 155   1              MotorPWM_SetInterruptMode(MotorPWM_INIT_INTERRUPTS_MODE);
+ 156   1          #endif /* (MotorPWM_UseStatus || MotorPWM_UsingFixedFunction) */
+ 157   1              
+ 158   1          #if (MotorPWM_UsingFixedFunction)
+                      /* Globally Enable the Fixed Function Block chosen */
+                      MotorPWM_GLOBAL_ENABLE |= MotorPWM_BLOCK_EN_MASK;
+                      /* Set the Interrupt source to come from the status register */
+                      MotorPWM_CONTROL2 |= MotorPWM_CTRL2_IRQ_SEL;
+                  #else
+ 164   1              #if(MotorPWM_UseStatus)
+ 165   1                  
+ 166   1                  /* CyEnterCriticalRegion and CyExitCriticalRegion are used to mark following region critical*/
+ 167   1                  /* Enter Critical Region*/
+ 168   1                  MotorPWM_interruptState = CyEnterCriticalSection();
+ 169   1                  /* Use the interrupt output of the status register for IRQ output */
+ 170   1                  MotorPWM_STATUS_AUX_CTRL |= MotorPWM_STATUS_ACTL_INT_EN_MASK;
+ 171   1                  
+ 172   1                   /* Exit Critical Region*/
+ 173   1                  CyExitCriticalSection(MotorPWM_interruptState);
+ 174   1                  
+ 175   1                  /* Clear the FIFO to enable the MotorPWM_STATUS_FIFOFULL
+ 176   1                         bit to be set on FIFO full. */
+ 177   1                  MotorPWM_ClearFIFO();
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 4   
+
+ 178   1              #endif /* (MotorPWM_UseStatus) */
+ 179   1          #endif /* (MotorPWM_UsingFixedFunction) */
+ 180   1      }
+ 181          
+ 182          
+ 183          /*******************************************************************************
+ 184          * Function Name: MotorPWM_Enable
+ 185          ********************************************************************************
+ 186          *
+ 187          * Summary: 
+ 188          *  Enables the PWM block operation
+ 189          *
+ 190          * Parameters:  
+ 191          *  void
+ 192          *
+ 193          * Return: 
+ 194          *  void
+ 195          *
+ 196          * Side Effects: 
+ 197          *  This works only if software enable mode is chosen
+ 198          *
+ 199          *******************************************************************************/
+ 200          void MotorPWM_Enable(void) 
+ 201          {
+ 202   1          /* Globally Enable the Fixed Function Block chosen */
+ 203   1          #if (MotorPWM_UsingFixedFunction)
+                      MotorPWM_GLOBAL_ENABLE |= MotorPWM_BLOCK_EN_MASK;
+                      MotorPWM_GLOBAL_STBY_ENABLE |= MotorPWM_BLOCK_STBY_EN_MASK;
+                  #endif /* (MotorPWM_UsingFixedFunction) */
+ 207   1          
+ 208   1          /* Enable the PWM from the control register  */
+ 209   1          #if (MotorPWM_UseControl || MotorPWM_UsingFixedFunction)
+ 210   1              MotorPWM_CONTROL |= MotorPWM_CTRL_ENABLE;
+ 211   1          #endif /* (MotorPWM_UseControl || MotorPWM_UsingFixedFunction) */
+ 212   1      }
+ 213          
+ 214          
+ 215          /*******************************************************************************
+ 216          * Function Name: MotorPWM_Stop
+ 217          ********************************************************************************
+ 218          *
+ 219          * Summary:
+ 220          *  The stop function halts the PWM, but does not change any modes or disable
+ 221          *  interrupts.
+ 222          *
+ 223          * Parameters:  
+ 224          *  void  
+ 225          *
+ 226          * Return: 
+ 227          *  void
+ 228          *
+ 229          * Side Effects:
+ 230          *  If the Enable mode is set to Hardware only then this function
+ 231          *  has no effect on the operation of the PWM
+ 232          *
+ 233          *******************************************************************************/
+ 234          void MotorPWM_Stop(void) 
+ 235          {
+ 236   1          #if (MotorPWM_UseControl || MotorPWM_UsingFixedFunction)
+ 237   1              MotorPWM_CONTROL &= ~MotorPWM_CTRL_ENABLE;
+ 238   1          #endif /* (MotorPWM_UseControl || MotorPWM_UsingFixedFunction) */
+ 239   1          
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 5   
+
+ 240   1          /* Globally disable the Fixed Function Block chosen */
+ 241   1          #if (MotorPWM_UsingFixedFunction)
+                      MotorPWM_GLOBAL_ENABLE &= ~MotorPWM_BLOCK_EN_MASK;
+                      MotorPWM_GLOBAL_STBY_ENABLE &= ~MotorPWM_BLOCK_STBY_EN_MASK;
+                  #endif /* (MotorPWM_UsingFixedFunction) */
+ 245   1      }
+ 246          
+ 247          
+ 248          #if (MotorPWM_UseOneCompareMode)
+ 249          #if (MotorPWM_CompareMode1SW)
+              
+              
+              /*******************************************************************************
+              * Function Name: MotorPWM_SetCompareMode
+              ********************************************************************************
+              * 
+              * Summary:
+              *  This function writes the Compare Mode for the pwm output when in Dither mode,
+              *  Center Align Mode or One Output Mode.
+              *
+              * Parameters:
+              *  comparemode:  The new compare mode for the PWM output. Use the compare types
+              *                defined in the H file as input arguments.
+              *
+              * Return:
+              *  void
+              *
+              *******************************************************************************/
+              void MotorPWM_SetCompareMode(uint8 comparemode) 
+              {
+                  #if(MotorPWM_UsingFixedFunction)
+                      #if(CY_PSOC5A)
+                          uint8 comparemodemasked = (comparemode << MotorPWM_CTRL_CMPMODE1_SHIFT);
+                          MotorPWM_CONTROL2 &= ~MotorPWM_CTRL_CMPMODE1_MASK; /*Clear Existing Data */
+                          MotorPWM_CONTROL2 |= comparemodemasked;  
+                      #endif /* (CY_PSOC5A) */
+                              
+                      #if(CY_PSOC3 || CY_PSOC5LP)
+                          uint8 comparemodemasked = (comparemode << MotorPWM_CTRL_CMPMODE1_SHIFT);
+                          MotorPWM_CONTROL3 &= ~MotorPWM_CTRL_CMPMODE1_MASK; /*Clear Existing Data */
+                          MotorPWM_CONTROL3 |= comparemodemasked;     
+                      #endif /* (CY_PSOC3 || CY_PSOC5LP) */
+                              
+                  #elif (MotorPWM_UseControl)
+                      uint8 comparemode1masked = (comparemode << MotorPWM_CTRL_CMPMODE1_SHIFT) & 
+                                                  MotorPWM_CTRL_CMPMODE1_MASK;
+                      uint8 comparemode2masked = (comparemode << MotorPWM_CTRL_CMPMODE2_SHIFT) & 
+                                                 MotorPWM_CTRL_CMPMODE2_MASK;
+                      /*Clear existing mode */
+                      MotorPWM_CONTROL &= ~(MotorPWM_CTRL_CMPMODE1_MASK | MotorPWM_CTRL_CMPMODE2_MASK); 
+                      MotorPWM_CONTROL |= (comparemode1masked | comparemode2masked);
+                      
+                  #else
+                      uint8 temp = comparemode;
+                  #endif /* (MotorPWM_UsingFixedFunction) */
+              }
+              #endif /* MotorPWM_CompareMode1SW */
+ 297          
+ 298          #else /* UseOneCompareMode */
+              
+              
+              #if (MotorPWM_CompareMode1SW)
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 6   
+
+              
+              
+              /*******************************************************************************
+              * Function Name: MotorPWM_SetCompareMode1
+              ********************************************************************************
+              * 
+              * Summary:
+              *  This function writes the Compare Mode for the pwm or pwm1 output
+              *
+              * Parameters:  
+              *  comparemode:  The new compare mode for the PWM output. Use the compare types
+              *                defined in the H file as input arguments.
+              *
+              * Return: 
+              *  void
+              *
+              *******************************************************************************/
+              void MotorPWM_SetCompareMode1(uint8 comparemode) 
+              {
+                  uint8 comparemodemasked = (comparemode << MotorPWM_CTRL_CMPMODE1_SHIFT) & 
+                                             MotorPWM_CTRL_CMPMODE1_MASK;
+                  #if(MotorPWM_UsingFixedFunction)
+                      #if(CY_PSOC5A)
+                          MotorPWM_CONTROL2 &= MotorPWM_CTRL_CMPMODE1_MASK; /*Clear existing mode */
+                          MotorPWM_CONTROL2 |= comparemodemasked; 
+                      #endif /* (CY_PSOC5A) */
+                              
+                      #if(CY_PSOC3 || CY_PSOC5LP)
+                          MotorPWM_CONTROL3 &= MotorPWM_CTRL_CMPMODE1_MASK; /*Clear existing mode */
+                          MotorPWM_CONTROL3 |= comparemodemasked; 
+                      #endif /* (CY_PSOC3 || CY_PSOC5LP) */
+                              
+                  #elif (MotorPWM_UseControl)
+                      MotorPWM_CONTROL &= MotorPWM_CTRL_CMPMODE1_MASK; /*Clear existing mode */
+                      MotorPWM_CONTROL |= comparemodemasked;
+                  #endif    /* (MotorPWM_UsingFixedFunction) */
+              }
+              #endif /* MotorPWM_CompareMode1SW */
+              
+              
+              #if (MotorPWM_CompareMode2SW)
+              
+              
+              /*******************************************************************************
+              * Function Name: MotorPWM_SetCompareMode2
+              ********************************************************************************
+              * 
+              * Summary:
+              *  This function writes the Compare Mode for the pwm or pwm2 output
+              *
+              * Parameters:  
+              *  comparemode:  The new compare mode for the PWM output. Use the compare types
+              *                defined in the H file as input arguments.
+              *
+              * Return: 
+              *  void
+              *
+              *******************************************************************************/
+              void MotorPWM_SetCompareMode2(uint8 comparemode) 
+              {
+                  #if(MotorPWM_UsingFixedFunction)
+                      /* Do Nothing because there is no second Compare Mode Register in FF block */ 
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 7   
+
+                  #elif (MotorPWM_UseControl)
+                      uint8 comparemodemasked = (comparemode << MotorPWM_CTRL_CMPMODE2_SHIFT) & 
+                                                           MotorPWM_CTRL_CMPMODE2_MASK;
+                      MotorPWM_CONTROL &= MotorPWM_CTRL_CMPMODE2_MASK; /*Clear existing mode */
+                      MotorPWM_CONTROL |= comparemodemasked;
+                  #endif /* (MotorPWM_UsingFixedFunction) */
+              }
+              #endif /*MotorPWM_CompareMode2SW */
+              #endif /* UseOneCompareMode */
+ 373          
+ 374          
+ 375          #if (!MotorPWM_UsingFixedFunction)
+ 376          
+ 377          
+ 378          /*******************************************************************************
+ 379          * Function Name: MotorPWM_WriteCounter
+ 380          ********************************************************************************
+ 381          * 
+ 382          * Summary:
+ 383          *  This function is used to change the counter value.
+ 384          *
+ 385          * Parameters:  
+ 386          *  counter:  This value may be between 1 and (2^Resolution)-1.   
+ 387          *
+ 388          * Return: 
+ 389          *  void
+ 390          *
+ 391          *******************************************************************************/
+ 392          void MotorPWM_WriteCounter(uint16 counter) \
+ 393                                             
+ 394          {
+ 395   1          CY_SET_REG16(MotorPWM_COUNTER_LSB_PTR, counter);
+ 396   1      }
+ 397          
+ 398          /*******************************************************************************
+ 399          * Function Name: MotorPWM_ReadCounter
+ 400          ********************************************************************************
+ 401          * 
+ 402          * Summary:
+ 403          *  This function returns the current value of the counter.  It doesn't matter
+ 404          *  if the counter is enabled or running.
+ 405          *
+ 406          * Parameters:  
+ 407          *  void  
+ 408          *
+ 409          * Return: 
+ 410          *  The current value of the counter.
+ 411          *
+ 412          *******************************************************************************/
+ 413          uint16 MotorPWM_ReadCounter(void) 
+ 414          {
+ 415   1          /* Force capture by reading Accumulator */
+ 416   1          /* Must first do a software capture to be able to read the counter */
+ 417   1          /* It is up to the user code to make sure there isn't already captured data in the FIFO */
+ 418   1          CY_GET_REG8(MotorPWM_COUNTERCAP_LSB_PTR);
+ 419   1          
+ 420   1          /* Read the data from the FIFO (or capture register for Fixed Function)*/
+ 421   1          return (CY_GET_REG16(MotorPWM_CAPTURE_LSB_PTR));
+ 422   1      }
+ 423          
+ 424          
+ 425          #if (MotorPWM_UseStatus)
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 8   
+
+ 426          
+ 427          
+ 428          /*******************************************************************************
+ 429          * Function Name: MotorPWM_ClearFIFO
+ 430          ********************************************************************************
+ 431          * 
+ 432          * Summary:
+ 433          *  This function clears all capture data from the capture FIFO
+ 434          *
+ 435          * Parameters:  
+ 436          *  void
+ 437          *
+ 438          * Return: 
+ 439          *  void
+ 440          *
+ 441          *******************************************************************************/
+ 442          void MotorPWM_ClearFIFO(void) 
+ 443          {
+ 444   1          while(MotorPWM_ReadStatusRegister() & MotorPWM_STATUS_FIFONEMPTY)
+ 445   1              MotorPWM_ReadCapture();
+ 446   1      }
+ 447          #endif /* MotorPWM_UseStatus */
+ 448          #endif /* !MotorPWM_UsingFixedFunction */
+ 449          
+ 450          
+ 451          /*******************************************************************************
+ 452          * Function Name: MotorPWM_WritePeriod
+ 453          ********************************************************************************
+ 454          * 
+ 455          * Summary:
+ 456          *  This function is used to change the period of the counter.  The new period 
+ 457          *  will be loaded the next time terminal count is detected.
+ 458          *
+ 459          * Parameters:  
+ 460          *  period:  Period value. May be between 1 and (2^Resolution)-1.  A value of 0 
+ 461          *           will result in the counter remaining at zero.
+ 462          *
+ 463          * Return: 
+ 464          *  void
+ 465          *
+ 466          *******************************************************************************/
+ 467          void MotorPWM_WritePeriod(uint16 period) 
+ 468          {
+ 469   1          #if(MotorPWM_UsingFixedFunction)
+                      CY_SET_REG16(MotorPWM_PERIOD_LSB_PTR, (uint16)period);
+                  #else
+ 472   1              CY_SET_REG16(MotorPWM_PERIOD_LSB_PTR, period);
+ 473   1          #endif /* (MotorPWM_UsingFixedFunction) */
+ 474   1      }
+ 475          
+ 476          
+ 477          #if (MotorPWM_UseOneCompareMode)
+ 478          
+ 479          
+ 480          /*******************************************************************************
+ 481          * Function Name: MotorPWM_WriteCompare
+ 482          ********************************************************************************
+ 483          * 
+ 484          * Summary:
+ 485          *  This funtion is used to change the compare1 value when the PWM is in Dither
+ 486          *  mode. The compare output will reflect the new value on the next UDB clock. 
+ 487          *  The compare output will be driven high when the present counter value is 
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 9   
+
+ 488          *  compared to the compare value based on the compare mode defined in 
+ 489          *  Dither Mode.
+ 490          *
+ 491          * Parameters:  
+ 492          *  compare:  New compare value.  
+ 493          *
+ 494          * Return: 
+ 495          *  void
+ 496          *
+ 497          * Side Effects:
+ 498          *  This function is only available if the PWM mode parameter is set to
+ 499          *  Dither Mode, Center Aligned Mode or One Output Mode
+ 500          *
+ 501          *******************************************************************************/
+ 502          void MotorPWM_WriteCompare(uint16 compare) \
+ 503                                             
+ 504          {
+ 505   1         CY_SET_REG16(MotorPWM_COMPARE1_LSB_PTR, compare);
+ 506   1         #if (MotorPWM_PWMMode == MotorPWM__B_PWM__DITHER)
+                      CY_SET_REG16(MotorPWM_COMPARE2_LSB_PTR, compare+1);
+                 #endif /* (MotorPWM_PWMMode == MotorPWM__B_PWM__DITHER) */
+ 509   1      }
+ 510          
+ 511          
+ 512          #else
+              
+              
+              /*******************************************************************************
+              * Function Name: MotorPWM_WriteCompare1
+              ********************************************************************************
+              * 
+              * Summary:
+              *  This funtion is used to change the compare1 value.  The compare output will 
+              *  reflect the new value on the next UDB clock.  The compare output will be 
+              *  driven high when the present counter value is less than or less than or 
+              *  equal to the compare register, depending on the mode.
+              *
+              * Parameters:  
+              *  compare:  New compare value.  
+              *
+              * Return: 
+              *  void
+              *
+              *******************************************************************************/
+              void MotorPWM_WriteCompare1(uint16 compare) \
+                                                  
+              {
+                  #if(MotorPWM_UsingFixedFunction)
+                      CY_SET_REG16(MotorPWM_COMPARE1_LSB_PTR, (uint16)compare);
+                  #else
+                      CY_SET_REG16(MotorPWM_COMPARE1_LSB_PTR, compare);
+                  #endif /* (MotorPWM_UsingFixedFunction) */
+              }
+              
+              
+              /*******************************************************************************
+              * Function Name: MotorPWM_WriteCompare2
+              ********************************************************************************
+              * 
+              * Summary:
+              *  This funtion is used to change the compare value, for compare1 output.  
+              *  The compare output will reflect the new value on the next UDB clock.  
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 10  
+
+              *  The compare output will be driven high when the present counter value is 
+              *  less than or less than or equal to the compare register, depending on the 
+              *  mode.
+              *
+              * Parameters:  
+              *  compare:  New compare value.  
+              *
+              * Return: 
+              *  void
+              *
+              *******************************************************************************/
+              void MotorPWM_WriteCompare2(uint16 compare) \
+                                                  
+              {
+                  #if(MotorPWM_UsingFixedFunction)
+                      CY_SET_REG16(MotorPWM_COMPARE2_LSB_PTR, compare);
+                  #else
+                      CY_SET_REG16(MotorPWM_COMPARE2_LSB_PTR, compare);
+                  #endif /* (MotorPWM_UsingFixedFunction) */
+              }
+              #endif /* UseOneCompareMode */
+ 571          
+ 572          
+ 573          #if (MotorPWM_DeadBandUsed)
+              
+              
+              /*******************************************************************************
+              * Function Name: MotorPWM_WriteDeadTime
+              ********************************************************************************
+              * 
+              * Summary:
+              *  This function writes the dead-band counts to the corresponding register
+              *
+              * Parameters:  
+              *  deadtime:  Number of counts for dead time 
+              *
+              * Return: 
+              *  void
+              *
+              *******************************************************************************/
+              void MotorPWM_WriteDeadTime(uint8 deadtime) 
+              {
+                  /* If using the Dead Band 1-255 mode then just write the register */
+                  #if(!MotorPWM_DeadBand2_4)
+                      CY_SET_REG8(MotorPWM_DEADBAND_COUNT_PTR, deadtime);
+                  #else
+                      /* Otherwise the data has to be masked and offset */        
+                      /* Clear existing data */
+                      MotorPWM_DEADBAND_COUNT &= ~MotorPWM_DEADBAND_COUNT_MASK; 
+                          /* Set new dead time */
+                      MotorPWM_DEADBAND_COUNT |= (deadtime << MotorPWM_DEADBAND_COUNT_SHIFT) & 
+                                                          MotorPWM_DEADBAND_COUNT_MASK; 
+                  #endif /* (!MotorPWM_DeadBand2_4) */
+              }
+              
+              
+              /*******************************************************************************
+              * Function Name: MotorPWM_ReadDeadTime
+              ********************************************************************************
+              * 
+              * Summary:
+              *  This function reads the dead-band counts from the corresponding register
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 11  
+
+              *
+              * Parameters:  
+              *  void
+              *
+              * Return: 
+              *  Dead Band Counts
+              *
+              *******************************************************************************/
+              uint8 MotorPWM_ReadDeadTime(void) 
+              {
+                  /* If using the Dead Band 1-255 mode then just read the register */
+                  #if(!MotorPWM_DeadBand2_4)
+                      return (CY_GET_REG8(MotorPWM_DEADBAND_COUNT_PTR));
+                  #else
+                      /* Otherwise the data has to be masked and offset */
+                      return ((MotorPWM_DEADBAND_COUNT & MotorPWM_DEADBAND_COUNT_MASK) >> 
+                               MotorPWM_DEADBAND_COUNT_SHIFT);
+                  #endif /* (!MotorPWM_DeadBand2_4) */
+              }
+              #endif /* DeadBandUsed */
+ 632          
+ 633          
+ 634          /* [] END OF FILE */
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 12  
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION MotorPWM_Start (BEGIN)
+                                           ; SOURCE LINE # 50
+                                           ; SOURCE LINE # 51
+                                           ; SOURCE LINE # 53
+0000 900000      R     MOV     DPTR,#MotorPWM_initVar
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 7009              JNZ     ?C0001
+                                           ; SOURCE LINE # 54
+                                           ; SOURCE LINE # 55
+0008 120000      R     LCALL   MotorPWM_Init
+                                           ; SOURCE LINE # 56
+000B 900000      R     MOV     DPTR,#MotorPWM_initVar
+000E 7401              MOV     A,#01H
+0010 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 57
+0011         ?C0001:
+                                           ; SOURCE LINE # 58
+0011 120000      R     LCALL   MotorPWM_Enable
+                                           ; SOURCE LINE # 60
+0014         ?C0002:
+0014 22                RET     
+             ; FUNCTION MotorPWM_Start (END)
+
+             ; FUNCTION MotorPWM_Init (BEGIN)
+                                           ; SOURCE LINE # 79
+                                           ; SOURCE LINE # 80
+                                           ; SOURCE LINE # 119
+0000 90647F            MOV     DPTR,#0647FH
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 54C0              ANL     A,#0C0H
+0008 FF                MOV     R7,A
+0009 900000      R     MOV     DPTR,#ctrl
+000C EF                MOV     A,R7
+000D F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 120
+000E 900000      R     MOV     DPTR,#ctrl
+0011 E0                MOVX    A,@DPTR
+0012 FF                MOV     R7,A
+0013 EF                MOV     A,R7
+0014 4409              ORL     A,#09H
+0016 FF                MOV     R7,A
+0017 90647F            MOV     DPTR,#0647FH
+001A EF                MOV     A,R7
+001B F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 130
+001C 90649E            MOV     DPTR,#0649EH
+001F E0                MOVX    A,@DPTR
+0020 FF                MOV     R7,A
+0021 EF                MOV     A,R7
+0022 4401              ORL     A,#01H
+0024 FF                MOV     R7,A
+0025 EF                MOV     A,R7
+0026 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 131
+0027 90649F            MOV     DPTR,#0649FH
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 13  
+
+002A E0                MOVX    A,@DPTR
+002B FF                MOV     R7,A
+002C EF                MOV     A,R7
+002D 4401              ORL     A,#01H
+002F FF                MOV     R7,A
+0030 EF                MOV     A,R7
+0031 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 134
+0032 7FFF              MOV     R7,#0FFH
+0034 7E00              MOV     R6,#00H
+0036 120000      R     LCALL   _MotorPWM_WriteCounter
+                                           ; SOURCE LINE # 137
+0039 7FFF              MOV     R7,#0FFH
+003B 7E00              MOV     R6,#00H
+003D 120000      R     LCALL   _MotorPWM_WritePeriod
+                                           ; SOURCE LINE # 140
+0040 7F00              MOV     R7,#00H
+0042 7E00              MOV     R6,#00H
+0044 120000      R     LCALL   _MotorPWM_WriteCompare
+                                           ; SOURCE LINE # 155
+0047 90648F            MOV     DPTR,#0648FH
+004A E4                CLR     A
+004B F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 168
+004C 120000      E     LCALL   CyEnterCriticalSection
+004F 900000      R     MOV     DPTR,#MotorPWM_interruptState
+0052 EF                MOV     A,R7
+0053 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 170
+0054 90649F            MOV     DPTR,#0649FH
+0057 E0                MOVX    A,@DPTR
+0058 FF                MOV     R7,A
+0059 EF                MOV     A,R7
+005A 4410              ORL     A,#010H
+005C FF                MOV     R7,A
+005D EF                MOV     A,R7
+005E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 173
+005F 900000      R     MOV     DPTR,#MotorPWM_interruptState
+0062 E0                MOVX    A,@DPTR
+0063 FF                MOV     R7,A
+0064 120000      E     LCALL   _CyExitCriticalSection
+                                           ; SOURCE LINE # 177
+0067 120000      R     LCALL   MotorPWM_ClearFIFO
+                                           ; SOURCE LINE # 180
+006A         ?C0003:
+006A 22                RET     
+             ; FUNCTION MotorPWM_Init (END)
+
+             ; FUNCTION MotorPWM_Enable (BEGIN)
+                                           ; SOURCE LINE # 200
+                                           ; SOURCE LINE # 201
+                                           ; SOURCE LINE # 210
+0000 90647F            MOV     DPTR,#0647FH
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 4480              ORL     A,#080H
+0008 FF                MOV     R7,A
+0009 EF                MOV     A,R7
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 212
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 14  
+
+000B         ?C0004:
+000B 22                RET     
+             ; FUNCTION MotorPWM_Enable (END)
+
+             ; FUNCTION MotorPWM_Stop (BEGIN)
+                                           ; SOURCE LINE # 234
+                                           ; SOURCE LINE # 235
+                                           ; SOURCE LINE # 237
+0000 90647F            MOV     DPTR,#0647FH
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 547F              ANL     A,#07FH
+0008 FF                MOV     R7,A
+0009 EF                MOV     A,R7
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 245
+000B         ?C0005:
+000B 22                RET     
+             ; FUNCTION MotorPWM_Stop (END)
+
+             ; FUNCTION _MotorPWM_WriteCounter (BEGIN)
+                                           ; SOURCE LINE # 392
+0000 900000      R     MOV     DPTR,#counter
+0003 EE                MOV     A,R6
+0004 F0                MOVX    @DPTR,A
+0005 A3                INC     DPTR
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 394
+                                           ; SOURCE LINE # 395
+0008 7B02              MOV     R3,#02H
+000A 7A64              MOV     R2,#064H
+000C 790E              MOV     R1,#0EH
+000E 900000      R     MOV     DPTR,#counter
+0011 E0                MOVX    A,@DPTR
+0012 FC                MOV     R4,A
+0013 A3                INC     DPTR
+0014 E0                MOVX    A,@DPTR
+0015 FD                MOV     R5,A
+0016 120000      E     LCALL   _cywrite16_nodpx
+                                           ; SOURCE LINE # 396
+0019         ?C0006:
+0019 22                RET     
+             ; FUNCTION _MotorPWM_WriteCounter (END)
+
+             ; FUNCTION MotorPWM_ReadCounter (BEGIN)
+                                           ; SOURCE LINE # 413
+                                           ; SOURCE LINE # 414
+                                           ; SOURCE LINE # 418
+0000 90641E            MOV     DPTR,#0641EH
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+                                           ; SOURCE LINE # 421
+0005 7B02              MOV     R3,#02H
+0007 7A64              MOV     R2,#064H
+0009 795E              MOV     R1,#05EH
+000B 120000      E     LCALL   _cyread16_nodpx
+                                           ; SOURCE LINE # 422
+000E         ?C0007:
+000E 22                RET     
+             ; FUNCTION MotorPWM_ReadCounter (END)
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 15  
+
+
+             ; FUNCTION MotorPWM_ClearFIFO (BEGIN)
+                                           ; SOURCE LINE # 442
+                                           ; SOURCE LINE # 443
+0000         ?C0008:
+                                           ; SOURCE LINE # 444
+0000 90646F            MOV     DPTR,#0646FH
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 30E40B            JNB     ACC.4,?C0010
+                                           ; SOURCE LINE # 445
+0009 7B02              MOV     R3,#02H
+000B 7A64              MOV     R2,#064H
+000D 795E              MOV     R1,#05EH
+000F 120000      E     LCALL   _cyread16_nodpx
+0012 80EC              SJMP    ?C0008
+0014         ?C0009:
+                                           ; SOURCE LINE # 446
+0014         ?C0010:
+0014 22                RET     
+             ; FUNCTION MotorPWM_ClearFIFO (END)
+
+             ; FUNCTION _MotorPWM_WritePeriod (BEGIN)
+                                           ; SOURCE LINE # 467
+0000 900000      R     MOV     DPTR,#period
+0003 EE                MOV     A,R6
+0004 F0                MOVX    @DPTR,A
+0005 A3                INC     DPTR
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 468
+                                           ; SOURCE LINE # 472
+0008 7B02              MOV     R3,#02H
+000A 7A64              MOV     R2,#064H
+000C 794E              MOV     R1,#04EH
+000E 900000      R     MOV     DPTR,#period
+0011 E0                MOVX    A,@DPTR
+0012 FC                MOV     R4,A
+0013 A3                INC     DPTR
+0014 E0                MOVX    A,@DPTR
+0015 FD                MOV     R5,A
+0016 120000      E     LCALL   _cywrite16_nodpx
+                                           ; SOURCE LINE # 474
+0019         ?C0011:
+0019 22                RET     
+             ; FUNCTION _MotorPWM_WritePeriod (END)
+
+             ; FUNCTION _MotorPWM_WriteCompare (BEGIN)
+                                           ; SOURCE LINE # 502
+0000 900000      R     MOV     DPTR,#compare
+0003 EE                MOV     A,R6
+0004 F0                MOVX    @DPTR,A
+0005 A3                INC     DPTR
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 504
+                                           ; SOURCE LINE # 505
+0008 7B02              MOV     R3,#02H
+000A 7A64              MOV     R2,#064H
+000C 792E              MOV     R1,#02EH
+000E 900000      R     MOV     DPTR,#compare
+C51 COMPILER V9.03   MOTORPWM                                                              04/04/2015 14:09:14 PAGE 16  
+
+0011 E0                MOVX    A,@DPTR
+0012 FC                MOV     R4,A
+0013 A3                INC     DPTR
+0014 E0                MOVX    A,@DPTR
+0015 FD                MOV     R5,A
+0016 120000      E     LCALL   _cywrite16_nodpx
+                                           ; SOURCE LINE # 509
+0019         ?C0012:
+0019 22                RET     
+             ; FUNCTION _MotorPWM_WriteCompare (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    266    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      9    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

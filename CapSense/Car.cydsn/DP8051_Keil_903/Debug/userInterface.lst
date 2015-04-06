@@ -1,0 +1,656 @@
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE USERINTERFACE
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\userInterface.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\user
+                    -Interface.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\userInterface.lst) CD DB NOIP OT(0) INCDIR(Generated
+                    -_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\userInterface.obj)
+
+line level    source
+
+   1          /******************************************************************************
+   2           * File Name: userInterface.c
+   3           * Version 2.1
+   4           * 
+   5           * Authors: Jenny & Allie
+   6           * 
+   7           * Description:
+   8           * Speed Control using PI control
+   9           * 
+  10           * Dependencies: stdio.h, device.h, speedcontrol.h
+  11           * 
+  12           * Code Tested with: 
+  13           * PSoC Creator: PSoC Creator 2.1
+  14           * Device tested with: CY8C3866AXI-040 
+  15           * Compiler: DP8051 Keil 8.16
+  16          *******************************************************************************/
+  17          
+  18          #include <device.h>
+  19          #include <stdio.h>
+  20          #include "userInterface.h"
+  21          #include "speedControl.h"
+  22          #include "navigation.h"
+  23          
+  24          // global variables for CapSense
+  25          static uint8 statusButton0 = OFF;
+  26          static uint8 statusButton1 = OFF;
+  27          static uint16 sliderPosition = NO_FINGER;
+  28          static uint16 lastPosition = NO_FINGER;
+  29          
+  30          // global variable to control LCD update rate
+  31          int tick = 0;
+  32          
+  33          /******************************************************************************
+  34          *                               LCD SCREEN
+  35          * 
+  36          * Hardware connection on the Kit
+  37          * LCD - P2[0] through P6[6]
+  38          ******************************************************************************/ 
+  39          
+  40          /* update LCD screen */
+  41          void lcd__updates() {
+  42   1          char buffer1[20];   // LCD buffer for LINE 1
+  43   1          char buffer2[20];   // LCD buffer for LINE 2
+  44   1          
+  45   1          // update tick count for update rate
+  46   1          tick++;
+  47   1      
+  48   1          
+  49   1          // at rate of 5 ticks...
+  50   1          if (tick == 20) {
+  51   2              LCD_Position(0,7);
+  52   2              // clear previous
+  53   2              LCD_PrintString("    ");
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 2   
+
+  54   2              // LINE 1: print the current speed to LCD
+  55   2              LCD_Position(0,0);
+  56   2              sprintf(buffer1, "SPEED: %.1f ft/s  ", speed);
+  57   2              LCD_PrintString(buffer1);
+  58   2              
+  59   2              tick = 0;  // reset tick
+  60   2          }
+  61   1          
+  62   1          // LINE 2: print the goal speed to LCD
+  63   1          LCD_Position(1,0);
+  64   1          sprintf(buffer2, "GOAL: %.1f ft/s", GOAL);
+  65   1          LCD_PrintString(buffer2);
+  66   1      
+  67   1      }
+  68          
+  69          /******************************************************************************
+  70          *                   LEFT AND RIGHT SWITCHES FOR DIGITAL ON/OFF
+  71          * 
+  72          * Hardware connection on the Kit
+  73          * LeftButton - P6[1]
+  74          * RightButton - P15[5]
+  75          ******************************************************************************/ 
+  76          
+  77          /* start button interrupt handlers */
+  78          void button_Start() {
+  79   1          LeftButtonInterrupt_Start();                // start left button interrupt handler
+  80   1          LeftButtonInterrupt_SetVector(interLeft);   // set up left button interrupt
+  81   1          RightButtonInterrupt_Start();               // start right button interrupt handler
+  82   1          RightButtonInterrupt_SetVector(interRight); // set up right button interrupt
+  83   1      }
+  84          
+  85          /*---------------------------------------------------------------------------*/
+  86          /* Interrupt handler for left button */
+  87          CY_ISR(interLeft) {
+  88   1          /* START CAR */
+  89   1          speed_Start();
+  90   1         // start navigation
+  91   1          nav_Start();
+  92   1      }
+  93          
+  94          /*---------------------------------------------------------------------------*/
+  95          /* Interrupt handler for right button */
+  96          CY_ISR(interRight) {
+  97   1          /* STOP CAR */
+  98   1          speed_Stop();
+  99   1          nav_Stop();
+ 100   1      }
+ 101          
+ 102          /******************************************************************************
+ 103          *                             CAPSENSE OPERATION
+ 104          * 
+ 105          * Hardware connection on the Kit
+ 106          * Slider - P5[0] - P5[4]
+ 107          * Button1 - P5[5]
+ 108          * Button2 - P5[6]
+ 109          * LCD 2[0-6]
+ 110          ******************************************************************************/ 
+ 111          
+ 112          /* Start CapSense and LCD for CapSense */
+ 113          void sense_Start() {        
+ 114   1          /* Start capsense and initialize baselines and enable scan */
+ 115   1          CapSense_Start();
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 3   
+
+ 116   1          CapSense_InitializeAllBaselines();
+ 117   1          CapSense_ScanEnabledWidgets();
+ 118   1      }
+ 119          
+ 120          /*---------------------------------------------------------------------------*/
+ 121          /* Update CapSense in main loop and allow for user input from BUTTONS and SLIDER */
+ 122          void sense_updates() {
+ 123   1          // variables for the buttons and slider to change
+ 124   1          int button1 = 0;
+ 125   1          int button2 = 0;
+ 126   1          int slider = 0;
+ 127   1          
+ 128   1          /* If scanning is completed update the baseline count and check if sensor is active */  
+ 129   1          if(!CapSense_IsBusy())
+ 130   1          {
+ 131   2              /* Update baseline for all the sensors */
+ 132   2              CapSense_UpdateEnabledBaselines();
+ 133   2              CapSense_ScanEnabledWidgets();
+ 134   2          
+ 135   2              /* Test if button widget is active */
+ 136   2              statusButton0 = CapSense_CheckIsWidgetActive(CapSense_BUTTON0__BTN);
+ 137   2              statusButton1 = CapSense_CheckIsWidgetActive(CapSense_BUTTON1__BTN);
+ 138   2              sliderPosition =(uint8)CapSense_GetCentroidPos(CapSense_LINEARSLIDER0__LS);
+ 139   2      
+ 140   2              /********************* LEFT CAPSENSE BUTTON CONTROL ******************/
+ 141   2              if( statusButton0 == ON )
+ 142   2              {
+ 143   3                  /* CURRENTLY DOES NOTHING */
+ 144   3              }
+ 145   2              else
+ 146   2              {
+ 147   3                  /* CURRENTLY DOES NOTHING */
+ 148   3              }
+ 149   2      
+ 150   2              /********************* RIGHT CAPSENSE BUTTON CONTROL *****************/
+ 151   2              if( statusButton1 == ON )
+ 152   2              {
+ 153   3                  /* CURRENTLY DOES NOTHING */
+ 154   3              }
+ 155   2              else
+ 156   2              {
+ 157   3                  /* CURRENTLY DOES NOTHING */
+ 158   3              }
+ 159   2      
+ 160   2      
+ 161   2              /*************************** SLIDER CONTROL **************************/
+ 162   2              /* Finger not detected on slider */
+ 163   2                  if(sliderPosition == NO_FINGER)
+ 164   2              {  
+ 165   3              
+ 166   3              }
+ 167   2              
+ 168   2              /* Finger detected on the slider */
+ 169   2              else
+ 170   2              {
+ 171   3                  /* If finger position on the slider is changed then update GOAL speed */
+ 172   3                  if(sliderPosition != lastPosition)
+ 173   3                  {
+ 174   4                      // goal speed range of 3 ft/s to 6.3 ft/s
+ 175   4                      GOAL = ((double)sliderPosition / 30) + 3;
+ 176   4                      
+ 177   4                      // update slider positon
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 4   
+
+ 178   4                      lastPosition = sliderPosition; 
+ 179   4                  }
+ 180   3              }
+ 181   2          }
+ 182   1      }
+ 183          
+ 184          /*---------------------------------------------------------------------------*/
+ 185          /* [] END OF FILE */
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 5   
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION lcd__updates (BEGIN)
+                                           ; SOURCE LINE # 41
+                                           ; SOURCE LINE # 46
+0000 900000      R     MOV     DPTR,#tick+01H
+0003 E0                MOVX    A,@DPTR
+0004 04                INC     A
+0005 F0                MOVX    @DPTR,A
+0006 7006              JNZ     ?C0016
+0008 900000      R     MOV     DPTR,#tick
+000B E0                MOVX    A,@DPTR
+000C 04                INC     A
+000D F0                MOVX    @DPTR,A
+000E         ?C0016:
+                                           ; SOURCE LINE # 50
+000E 900000      R     MOV     DPTR,#tick
+0011 E0                MOVX    A,@DPTR
+0012 FE                MOV     R6,A
+0013 A3                INC     DPTR
+0014 E0                MOVX    A,@DPTR
+0015 FF                MOV     R7,A
+0016 EF                MOV     A,R7
+0017 6414              XRL     A,#014H
+0019 4E                ORL     A,R6
+001A 7062              JNZ     ?C0001
+                                           ; SOURCE LINE # 51
+001C 7D07              MOV     R5,#07H
+001E 7F00              MOV     R7,#00H
+0020 120000      E     LCALL   _LCD_Position
+                                           ; SOURCE LINE # 53
+0023 7BFF              MOV     R3,#0FFH
+0025 7A00        R     MOV     R2,#HIGH ?SC_0
+0027 7900        R     MOV     R1,#LOW ?SC_0
+0029 120000      E     LCALL   _LCD_PrintString
+                                           ; SOURCE LINE # 55
+002C 7D00              MOV     R5,#00H
+002E 7F00              MOV     R7,#00H
+0030 120000      E     LCALL   _LCD_Position
+                                           ; SOURCE LINE # 56
+0033 7B01              MOV     R3,#01H
+0035 7A00        R     MOV     R2,#HIGH buffer1
+0037 7900        R     MOV     R1,#LOW buffer1
+0039 C003              PUSH    AR3
+003B C002              PUSH    AR2
+003D C001              PUSH    AR1
+003F 7BFF              MOV     R3,#0FFH
+0041 7A00        R     MOV     R2,#HIGH ?SC_5
+0043 7900        R     MOV     R1,#LOW ?SC_5
+0045 900000      E     MOV     DPTR,#?_sprintf?BYTE+03H
+0048 EB                MOV     A,R3
+0049 F0                MOVX    @DPTR,A
+004A A3                INC     DPTR
+004B EA                MOV     A,R2
+004C F0                MOVX    @DPTR,A
+004D A3                INC     DPTR
+004E E9                MOV     A,R1
+004F F0                MOVX    @DPTR,A
+0050 900000      E     MOV     DPTR,#speed
+0053 E0                MOVX    A,@DPTR
+0054 FC                MOV     R4,A
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 6   
+
+0055 A3                INC     DPTR
+0056 E0                MOVX    A,@DPTR
+0057 FD                MOV     R5,A
+0058 A3                INC     DPTR
+0059 E0                MOVX    A,@DPTR
+005A FE                MOV     R6,A
+005B A3                INC     DPTR
+005C E0                MOVX    A,@DPTR
+005D FF                MOV     R7,A
+005E 900000      E     MOV     DPTR,#?_sprintf?BYTE+06H
+0061 120000      E     LCALL   ?C?LSTXDATA
+0064 D001              POP     AR1
+0066 D002              POP     AR2
+0068 D003              POP     AR3
+006A 120000      E     LCALL   _sprintf
+                                           ; SOURCE LINE # 57
+006D 7B01              MOV     R3,#01H
+006F 7A00        R     MOV     R2,#HIGH buffer1
+0071 7900        R     MOV     R1,#LOW buffer1
+0073 120000      E     LCALL   _LCD_PrintString
+                                           ; SOURCE LINE # 59
+0076 900000      R     MOV     DPTR,#tick
+0079 E4                CLR     A
+007A F0                MOVX    @DPTR,A
+007B A3                INC     DPTR
+007C E4                CLR     A
+007D F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 60
+007E         ?C0001:
+                                           ; SOURCE LINE # 63
+007E 7D00              MOV     R5,#00H
+0080 7F01              MOV     R7,#01H
+0082 120000      E     LCALL   _LCD_Position
+                                           ; SOURCE LINE # 64
+0085 7B01              MOV     R3,#01H
+0087 7A00        R     MOV     R2,#HIGH buffer2
+0089 7900        R     MOV     R1,#LOW buffer2
+008B C003              PUSH    AR3
+008D C002              PUSH    AR2
+008F C001              PUSH    AR1
+0091 7BFF              MOV     R3,#0FFH
+0093 7A00        R     MOV     R2,#HIGH ?SC_24
+0095 7900        R     MOV     R1,#LOW ?SC_24
+0097 900000      E     MOV     DPTR,#?_sprintf?BYTE+03H
+009A EB                MOV     A,R3
+009B F0                MOVX    @DPTR,A
+009C A3                INC     DPTR
+009D EA                MOV     A,R2
+009E F0                MOVX    @DPTR,A
+009F A3                INC     DPTR
+00A0 E9                MOV     A,R1
+00A1 F0                MOVX    @DPTR,A
+00A2 900000      E     MOV     DPTR,#GOAL
+00A5 E0                MOVX    A,@DPTR
+00A6 FC                MOV     R4,A
+00A7 A3                INC     DPTR
+00A8 E0                MOVX    A,@DPTR
+00A9 FD                MOV     R5,A
+00AA A3                INC     DPTR
+00AB E0                MOVX    A,@DPTR
+00AC FE                MOV     R6,A
+00AD A3                INC     DPTR
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 7   
+
+00AE E0                MOVX    A,@DPTR
+00AF FF                MOV     R7,A
+00B0 900000      E     MOV     DPTR,#?_sprintf?BYTE+06H
+00B3 120000      E     LCALL   ?C?LSTXDATA
+00B6 D001              POP     AR1
+00B8 D002              POP     AR2
+00BA D003              POP     AR3
+00BC 120000      E     LCALL   _sprintf
+                                           ; SOURCE LINE # 65
+00BF 7B01              MOV     R3,#01H
+00C1 7A00        R     MOV     R2,#HIGH buffer2
+00C3 7900        R     MOV     R1,#LOW buffer2
+00C5 120000      E     LCALL   _LCD_PrintString
+                                           ; SOURCE LINE # 67
+00C8         ?C0002:
+00C8 22                RET     
+             ; FUNCTION lcd__updates (END)
+
+             ; FUNCTION button_Start (BEGIN)
+                                           ; SOURCE LINE # 78
+                                           ; SOURCE LINE # 79
+0000 120000      E     LCALL   LeftButtonInterrupt_Start
+                                           ; SOURCE LINE # 80
+0003 7E00        R     MOV     R6,#HIGH interLeft
+0005 7F00        R     MOV     R7,#LOW interLeft
+0007 120000      E     LCALL   _LeftButtonInterrupt_SetVector
+                                           ; SOURCE LINE # 81
+000A 120000      E     LCALL   RightButtonInterrupt_Start
+                                           ; SOURCE LINE # 82
+000D 7E00        R     MOV     R6,#HIGH interRight
+000F 7F00        R     MOV     R7,#LOW interRight
+0011 120000      E     LCALL   _RightButtonInterrupt_SetVector
+                                           ; SOURCE LINE # 83
+0014         ?C0003:
+0014 22                RET     
+             ; FUNCTION button_Start (END)
+
+             ; FUNCTION interLeft (BEGIN)
+0000 C0E0              PUSH    ACC
+0002 C0F0              PUSH    B
+0004 C083              PUSH    DPH
+0006 C082              PUSH    DPL
+0008 C085              PUSH    DPH1
+000A C084              PUSH    DPL1
+000C C086              PUSH    DPS
+000E 758600            MOV     DPS,#00H
+0011 C000        E     PUSH    ?C?XPAGE1SFR
+0013 750000      E     MOV     ?C?XPAGE1SFR,#?C?XPAGE1RST
+0016 C0D0              PUSH    PSW
+0018 75D000            MOV     PSW,#00H
+001B C000              PUSH    AR0
+001D C001              PUSH    AR1
+001F C002              PUSH    AR2
+0021 C003              PUSH    AR3
+0023 C004              PUSH    AR4
+0025 C005              PUSH    AR5
+0027 C006              PUSH    AR6
+0029 C007              PUSH    AR7
+                                           ; SOURCE LINE # 87
+                                           ; SOURCE LINE # 89
+002B 120000      E     LCALL   speed_Start
+                                           ; SOURCE LINE # 91
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 8   
+
+002E 120000      E     LCALL   nav_Start
+                                           ; SOURCE LINE # 92
+0031         ?C0004:
+0031 D007              POP     AR7
+0033 D006              POP     AR6
+0035 D005              POP     AR5
+0037 D004              POP     AR4
+0039 D003              POP     AR3
+003B D002              POP     AR2
+003D D001              POP     AR1
+003F D000              POP     AR0
+0041 D0D0              POP     PSW
+0043 D000        E     POP     ?C?XPAGE1SFR
+0045 D086              POP     DPS
+0047 D084              POP     DPL1
+0049 D085              POP     DPH1
+004B D082              POP     DPL
+004D D083              POP     DPH
+004F D0F0              POP     B
+0051 D0E0              POP     ACC
+0053 32                RETI    
+             ; FUNCTION interLeft (END)
+
+             ; FUNCTION interRight (BEGIN)
+0000 C0E0              PUSH    ACC
+0002 C0F0              PUSH    B
+0004 C083              PUSH    DPH
+0006 C082              PUSH    DPL
+0008 C085              PUSH    DPH1
+000A C084              PUSH    DPL1
+000C C086              PUSH    DPS
+000E 758600            MOV     DPS,#00H
+0011 C000        E     PUSH    ?C?XPAGE1SFR
+0013 750000      E     MOV     ?C?XPAGE1SFR,#?C?XPAGE1RST
+0016 C0D0              PUSH    PSW
+0018 75D000            MOV     PSW,#00H
+001B C000              PUSH    AR0
+001D C001              PUSH    AR1
+001F C002              PUSH    AR2
+0021 C003              PUSH    AR3
+0023 C004              PUSH    AR4
+0025 C005              PUSH    AR5
+0027 C006              PUSH    AR6
+0029 C007              PUSH    AR7
+                                           ; SOURCE LINE # 96
+                                           ; SOURCE LINE # 98
+002B 120000      E     LCALL   speed_Stop
+                                           ; SOURCE LINE # 99
+002E 120000      E     LCALL   nav_Stop
+                                           ; SOURCE LINE # 100
+0031         ?C0005:
+0031 D007              POP     AR7
+0033 D006              POP     AR6
+0035 D005              POP     AR5
+0037 D004              POP     AR4
+0039 D003              POP     AR3
+003B D002              POP     AR2
+003D D001              POP     AR1
+003F D000              POP     AR0
+0041 D0D0              POP     PSW
+0043 D000        E     POP     ?C?XPAGE1SFR
+0045 D086              POP     DPS
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 9   
+
+0047 D084              POP     DPL1
+0049 D085              POP     DPH1
+004B D082              POP     DPL
+004D D083              POP     DPH
+004F D0F0              POP     B
+0051 D0E0              POP     ACC
+0053 32                RETI    
+             ; FUNCTION interRight (END)
+
+             ; FUNCTION sense_Start (BEGIN)
+                                           ; SOURCE LINE # 113
+                                           ; SOURCE LINE # 115
+0000 120000      E     LCALL   CapSense_Start
+                                           ; SOURCE LINE # 116
+0003 120000      E     LCALL   CapSense_InitializeAllBaselines
+                                           ; SOURCE LINE # 117
+0006 120000      E     LCALL   CapSense_ScanEnabledWidgets
+                                           ; SOURCE LINE # 118
+0009         ?C0006:
+0009 22                RET     
+             ; FUNCTION sense_Start (END)
+
+             ; FUNCTION sense_updates (BEGIN)
+                                           ; SOURCE LINE # 122
+                                           ; SOURCE LINE # 124
+0000 900000      R     MOV     DPTR,#button1
+0003 E4                CLR     A
+0004 F0                MOVX    @DPTR,A
+0005 A3                INC     DPTR
+0006 E4                CLR     A
+0007 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 125
+0008 900000      R     MOV     DPTR,#button2
+000B E4                CLR     A
+000C F0                MOVX    @DPTR,A
+000D A3                INC     DPTR
+000E E4                CLR     A
+000F F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 126
+0010 900000      R     MOV     DPTR,#slider
+0013 E4                CLR     A
+0014 F0                MOVX    @DPTR,A
+0015 A3                INC     DPTR
+0016 E4                CLR     A
+0017 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 129
+0018 120000      E     LCALL   CapSense_IsBusy
+001B EF                MOV     A,R7
+001C 6003              JZ      $ + 5H
+001E 020000      R     LJMP    ?C0015
+                                           ; SOURCE LINE # 130
+                                           ; SOURCE LINE # 132
+0021 120000      E     LCALL   CapSense_UpdateEnabledBaselines
+                                           ; SOURCE LINE # 133
+0024 120000      E     LCALL   CapSense_ScanEnabledWidgets
+                                           ; SOURCE LINE # 136
+0027 7F01              MOV     R7,#01H
+0029 120000      E     LCALL   _CapSense_CheckIsWidgetActive
+002C 900000      R     MOV     DPTR,#statusButton0
+002F EF                MOV     A,R7
+0030 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 137
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 10  
+
+0031 7F02              MOV     R7,#02H
+0033 120000      E     LCALL   _CapSense_CheckIsWidgetActive
+0036 900000      R     MOV     DPTR,#statusButton1
+0039 EF                MOV     A,R7
+003A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 138
+003B 7F00              MOV     R7,#00H
+003D 120000      E     LCALL   _CapSense_GetCentroidPos
+0040 7E00              MOV     R6,#00H
+0042 900000      R     MOV     DPTR,#sliderPosition
+0045 EE                MOV     A,R6
+0046 F0                MOVX    @DPTR,A
+0047 A3                INC     DPTR
+0048 EF                MOV     A,R7
+0049 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 141
+                                           ; SOURCE LINE # 142
+                                           ; SOURCE LINE # 144
+004A         ?C0008:
+                                           ; SOURCE LINE # 146
+                                           ; SOURCE LINE # 148
+004A         ?C0009:
+                                           ; SOURCE LINE # 151
+                                           ; SOURCE LINE # 152
+                                           ; SOURCE LINE # 154
+004A         ?C0010:
+                                           ; SOURCE LINE # 156
+                                           ; SOURCE LINE # 158
+004A         ?C0011:
+                                           ; SOURCE LINE # 163
+004A 900000      R     MOV     DPTR,#sliderPosition
+004D E0                MOVX    A,@DPTR
+004E FE                MOV     R6,A
+004F A3                INC     DPTR
+0050 E0                MOVX    A,@DPTR
+0051 FF                MOV     R7,A
+0052 EF                MOV     A,R7
+0053 64FF              XRL     A,#0FFH
+0055 4E                ORL     A,R6
+0056 6050              JZ      ?C0015
+                                           ; SOURCE LINE # 164
+                                           ; SOURCE LINE # 166
+0058         ?C0012:
+                                           ; SOURCE LINE # 170
+                                           ; SOURCE LINE # 172
+0058 900000      R     MOV     DPTR,#lastPosition
+005B E0                MOVX    A,@DPTR
+005C FE                MOV     R6,A
+005D A3                INC     DPTR
+005E E0                MOVX    A,@DPTR
+005F FF                MOV     R7,A
+0060 900000      R     MOV     DPTR,#sliderPosition
+0063 E0                MOVX    A,@DPTR
+0064 FC                MOV     R4,A
+0065 A3                INC     DPTR
+0066 E0                MOVX    A,@DPTR
+0067 FD                MOV     R5,A
+0068 ED                MOV     A,R5
+0069 6F                XRL     A,R7
+006A 7002              JNZ     ?C0017
+006C EC                MOV     A,R4
+006D 6E                XRL     A,R6
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 11  
+
+006E         ?C0017:
+006E 6038              JZ      ?C0015
+                                           ; SOURCE LINE # 173
+                                           ; SOURCE LINE # 175
+0070 900000      R     MOV     DPTR,#sliderPosition
+0073 E0                MOVX    A,@DPTR
+0074 FC                MOV     R4,A
+0075 A3                INC     DPTR
+0076 E0                MOVX    A,@DPTR
+0077 FD                MOV     R5,A
+0078 E4                CLR     A
+0079 120000      E     LCALL   ?C?FCASTI
+007C 7B00              MOV     R3,#00H
+007E 7A00              MOV     R2,#00H
+0080 79F0              MOV     R1,#0F0H
+0082 7841              MOV     R0,#041H
+0084 120000      E     LCALL   ?C?FPDIV
+0087 7B00              MOV     R3,#00H
+0089 7A00              MOV     R2,#00H
+008B 7940              MOV     R1,#040H
+008D 7840              MOV     R0,#040H
+008F 120000      E     LCALL   ?C?FPADD
+0092 900000      E     MOV     DPTR,#GOAL
+0095 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 178
+0098 900000      R     MOV     DPTR,#sliderPosition
+009B E0                MOVX    A,@DPTR
+009C FE                MOV     R6,A
+009D A3                INC     DPTR
+009E E0                MOVX    A,@DPTR
+009F FF                MOV     R7,A
+00A0 900000      R     MOV     DPTR,#lastPosition
+00A3 EE                MOV     A,R6
+00A4 F0                MOVX    @DPTR,A
+00A5 A3                INC     DPTR
+00A6 EF                MOV     A,R7
+00A7 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 179
+00A8         ?C0014:
+                                           ; SOURCE LINE # 180
+00A8         ?C0013:
+                                           ; SOURCE LINE # 181
+00A8         ?C0007:
+                                           ; SOURCE LINE # 182
+00A8         ?C0015:
+00A8 22                RET     
+             ; FUNCTION sense_updates (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    569    ----
+   CONSTANT SIZE    =     40    ----
+   XDATA SIZE       =     54    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+C51 COMPILER V9.03   USERINTERFACE                                                         04/04/2015 14:04:21 PAGE 12  
+
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

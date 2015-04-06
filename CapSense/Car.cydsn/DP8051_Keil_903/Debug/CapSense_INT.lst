@@ -1,0 +1,421 @@
+C51 COMPILER V9.03   CAPSENSE_INT                                                          04/04/2015 14:09:08 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE CAPSENSE_INT
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\CapSense_INT.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\Gene
+                    -rated_Source\PSoC3\CapSense_INT.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\CapSense_INT.lst) CD DB NOIP O
+                    -T(0) INCDIR(Generated_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\CapSense_INT.obj)
+
+line level    source
+
+   1          /*******************************************************************************
+   2          * File Name: CapSense_INT.c
+   3          * Version 3.20
+   4          *
+   5          * Description:
+   6          *  This file provides the source code of Interrupt Service Routine (ISR)
+   7          *  for CapSense CSD component.
+   8          *
+   9          * Note:
+  10          *
+  11          ********************************************************************************
+  12          * Copyright 2008-2012, Cypress Semiconductor Corporation.  All rights reserved.
+  13          * You may use this file only in accordance with the license, terms, conditions,
+  14          * disclaimers, and limitations in the end user license agreement accompanying
+  15          * the software package with which this file was provided.
+  16          *******************************************************************************/
+  17          
+  18          #include "CapSense.h"
+  19          
+  20          /*******************************************************************************
+  21          *  Place your includes, defines and code here 
+  22          ********************************************************************************/
+  23          /* `#START CapSense_IsrCH_ISR_intc` */
+  24          
+  25          /* `#END` */
+  26          
+  27          /* Extern functions declarations, Start and Compete the scan */
+  28          extern void CapSense_PreScan(uint8 sensor) CYREENTRANT;
+  29          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+  30              extern void CapSense_PostScan(uint8 sensor) ;
+  31          #else
+                  extern void CapSense_PostScanCh0(uint8 sensor) ;
+                  extern void CapSense_PostScanCh1(uint8 sensor) ;
+              #endif  /* CapSense_DESIGN_TYPE */
+  35          
+  36           #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+  37              extern uint8 CapSense_FindNextSensor(uint8 snsIndex) CYREENTRANT;
+  38          #endif  /* (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN) */
+  39           
+  40          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                  extern uint8 CapSense_FindNextPair(uint8 snsIndex) ;
+              #endif  /* (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) */
+  43          
+  44          /* Global variables and arrays */
+  45          extern volatile uint8 CapSense_csv;
+  46          extern volatile uint8 CapSense_sensorIndex;
+  47          
+  48          
+  49          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+  50              /*******************************************************************************
+  51              * Function Name: CapSense_IsrCH0_ISR
+  52              ********************************************************************************
+  53              *
+C51 COMPILER V9.03   CAPSENSE_INT                                                          04/04/2015 14:09:08 PAGE 2   
+
+  54              * Summary:
+  55              *  This ISR is executed when measure window is closed. The measure window 
+  56              *  depends on scan resolution parameter of sensor. 
+  57              *  The ISR has two modes: 
+  58              *   1. Scans single sensor and stores measure result.
+  59              *   2. Stores result of current measure and starts next scan till all 
+  60              *      enabled sensors will be scanned.
+  61              *  This interrupt handler only used in one channel designs.
+  62              *
+  63              * Parameters:
+  64              *  None
+  65              *
+  66              * Return:
+  67              *  None
+  68              *
+  69              * Global Variables:
+  70              *  CapSense_csv - used to provide status and mode of scanning process.
+  71              *   Mode - single scan or scan of all enabled sensors.
+  72              *   Status - scan in progress or ready for new scan.
+  73              *  CapSense_sensorIndex - used to store sensor scanning sensor number.
+  74              *
+  75              * Reentrant:
+  76              *  No
+  77              *
+  78              *******************************************************************************/
+  79              CY_ISR(CapSense_IsrCH0_ISR)
+  80              {
+  81   1              /*  Place your Interrupt code here. */
+  82   1              /* `#START CapSense_ONE_CHANNEL_IsrCH0_ISR` */
+  83   1      
+  84   1              /* `#END` */
+  85   1          
+  86   1              /* Save results and disable sensor */
+  87   1              CapSense_PostScan(CapSense_sensorIndex);
+  88   1                      
+  89   1              if ((CapSense_csv & CapSense_SW_CTRL_SINGLE_SCAN) != 0u)
+  90   1              {
+  91   2                  CapSense_csv &= ~CapSense_SW_STS_BUSY;
+  92   2              }
+  93   1              else
+  94   1              {
+  95   2                  /* Proceed the scanning */
+  96   2                  CapSense_sensorIndex = CapSense_FindNextSensor(CapSense_sensorIndex);
+  97   2                  
+  98   2                  /* Check end of scan */
+  99   2                  if(CapSense_sensorIndex < CapSense_TOTAL_SENSOR_COUNT)
+ 100   2                  {
+ 101   3                      CapSense_PreScan(CapSense_sensorIndex);
+ 102   3                  }
+ 103   2                  else
+ 104   2                  {
+ 105   3                      CapSense_csv &= ~CapSense_SW_STS_BUSY;
+ 106   3                  } 
+ 107   2              }
+ 108   1          }
+ 109           #endif  /* (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN) */
+ 110          
+ 111          
+ 112           #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)   
+                  /*******************************************************************************
+                  * Function Name: CapSense_IsrCH0_ISR
+                  ********************************************************************************
+C51 COMPILER V9.03   CAPSENSE_INT                                                          04/04/2015 14:09:08 PAGE 3   
+
+                  *
+                  * Summary:
+                  *  This ISR is executed when measure window is closed. The measure window 
+                  *  depends on scan resolution parameter of sensor. 
+                  *  The ISR has two modes: 
+                  *   1. Scans single sensor or pair of sensors and stores measure result.
+                  *   2. Stores results of current measure when complete scan of sensors pair or 
+                  *      sensor scan and starts next enabled sensors pair or sensor scan. 
+                  *  This interrupt handler only used in two channel designs.
+                  *  The synchronization is added to scanning process. The ISR channel 0 or 
+                  *  channel 1 stores the result and starts next scan. It depends which channel
+                  *  scans longer. The biggest scan resolution parameter of sensor within pair 
+                  *  defines scanning time of pair.
+                  *
+                  * Parameters:
+                  *  None
+                  *
+                  * Return:
+                  *  None
+                  *
+                  * Global Variables:
+                  *  CapSense_csv - used to provide status and mode of scanning process.
+                  *   Mode - single scan or scan of all enabled sensors.
+                  *   Status - scan in progress or ready for new scan.
+                  *  CapSense_sensorIndex - used to store sensor scanning sensor number.
+                  *
+                  * Reentrant:
+                  *  No
+                  *
+                  *******************************************************************************/
+                  CY_ISR(CapSense_IsrCH0_ISR)
+                  {
+                      /*  Place your Interrupt code here. */
+                      /* `#START CapSense_TWO_CHANNELS_IsrCH0_ISR` */
+              
+                      /* `#END` */
+                      
+                      CapSense_CONTROL_REG &= ~CapSense_CTRL_WINDOW_EN__CH0;
+                      CapSense_PostScanCh0(CapSense_sensorIndex);
+                      
+                      if((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH1) == 0u)
+                      {
+                          if ((CapSense_csv & CapSense_SW_CTRL_SINGLE_SCAN) != 0u)
+                          {
+                              CapSense_csv &= ~CapSense_SW_STS_BUSY;
+                          }
+                          else
+                          {
+                              /* Procced the scanning */
+                              CapSense_sensorIndex = CapSense_FindNextPair(CapSense_sensorIndex);
+                              
+                              /* Check end of scan conditions */
+                              if((CapSense_sensorIndex < CapSense_TOTAL_SENSOR_COUNT__CH0) || 
+                                 (CapSense_sensorIndex < CapSense_TOTAL_SENSOR_COUNT__CH1))
+                              {
+                                  CapSense_PreScan(CapSense_sensorIndex);
+                              }
+                              else
+                              {
+                                  CapSense_csv &= ~CapSense_SW_STS_BUSY;
+                              }
+                          }
+C51 COMPILER V9.03   CAPSENSE_INT                                                          04/04/2015 14:09:08 PAGE 4   
+
+                      }
+                      else
+                      {
+                          /* Do nothing */
+                      }
+                  }
+              
+                  
+                  /*******************************************************************************
+                  * Function Name: CapSense_IsrCH1_ISR
+                  ********************************************************************************
+                  *
+                  * Summary:
+                  *  This ISR is executed when measure window is closed. The measure window 
+                  *  depends on scan resolution parameter of sensor. 
+                  *  The ISR has two modes: 
+                  *   1. Scans single sensor or pair of sensors and stores measure result.
+                  *   2. Stores results of current measure when complete scan of sensors pair or 
+                  *      sensor scan and starts next enabled sensors pair or sensor scan. 
+                  *  This interrupt handler only used in two channel designs.
+                  *  The synchronization is added to scanning process. The ISR channel 0 or 
+                  *  channel 1 stores the result and starts next scan. It depends which channel
+                  *  scans longer. The biggest scan resolution parameter of sensor within pair 
+                  *  defines scanning time of pair.
+                  *
+                  * Parameters:
+                  *  None
+                  *
+                  * Return:
+                  *  None
+                  *
+                  * Global Variables:
+                  *  CapSense_csv - used to provide status and mode of scanning process.
+                  *   Mode - single scan or scan of all enabled sensors.
+                  *   Status - scan in progress or ready for new scan.
+                  *  CapSense_sensorIndex - used to store sensor scanning sensor number.
+                  *
+                  * Reentrant:
+                  *  No
+                  *
+                  *******************************************************************************/
+                  CY_ISR(CapSense_IsrCH1_ISR)
+                  {
+                      /*  Place your Interrupt code here */
+                      /* `#START CapSense_TWO_CHANNELS_IsrCH1_ISR` */
+              
+                      /* `#END` */
+                      
+                      CapSense_CONTROL_REG &= ~CapSense_CTRL_WINDOW_EN__CH1;
+                      CapSense_PostScanCh1(CapSense_sensorIndex + CapSense_TOTAL_SENSOR_COUNT__CH0);
+                      
+                      if((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH0) == 0u)
+                      {
+                          if ((CapSense_csv & CapSense_SW_CTRL_SINGLE_SCAN) != 0u)
+                          {
+                              CapSense_csv &= ~CapSense_SW_STS_BUSY;
+                          }
+                          else 
+                          {
+                              /* Procced the scanning */
+                              CapSense_sensorIndex = CapSense_FindNextPair(CapSense_sensorIndex);
+                              
+C51 COMPILER V9.03   CAPSENSE_INT                                                          04/04/2015 14:09:08 PAGE 5   
+
+                              /* Check end of scan conditions */
+                              if((CapSense_sensorIndex < CapSense_TOTAL_SENSOR_COUNT__CH0) || 
+                                 (CapSense_sensorIndex < CapSense_TOTAL_SENSOR_COUNT__CH1))
+                              {
+                                  CapSense_PreScan(CapSense_sensorIndex);
+                              }
+                              else
+                              {
+                                  CapSense_csv &= ~CapSense_SW_STS_BUSY;
+                              }
+                          }
+                      }
+                      else
+                      {
+                          /* Do nothing */
+                      }
+                  }
+              #endif  /* (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) */
+ 258          
+ 259          
+ 260          /* [] END OF FILE */
+C51 COMPILER V9.03   CAPSENSE_INT                                                          04/04/2015 14:09:08 PAGE 6   
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION CapSense_IsrCH0_ISR (BEGIN)
+0000 C0E0              PUSH    ACC
+0002 C0F0              PUSH    B
+0004 C083              PUSH    DPH
+0006 C082              PUSH    DPL
+0008 C085              PUSH    DPH1
+000A C084              PUSH    DPL1
+000C C086              PUSH    DPS
+000E 758600            MOV     DPS,#00H
+0011 C000        E     PUSH    ?C?XPAGE1SFR
+0013 750000      E     MOV     ?C?XPAGE1SFR,#?C?XPAGE1RST
+0016 C0D0              PUSH    PSW
+0018 75D000            MOV     PSW,#00H
+001B C000              PUSH    AR0
+001D C001              PUSH    AR1
+001F C002              PUSH    AR2
+0021 C003              PUSH    AR3
+0023 C004              PUSH    AR4
+0025 C005              PUSH    AR5
+0027 C006              PUSH    AR6
+0029 C007              PUSH    AR7
+                                           ; SOURCE LINE # 79
+                                           ; SOURCE LINE # 87
+002B 900000      E     MOV     DPTR,#CapSense_sensorIndex
+002E E0                MOVX    A,@DPTR
+002F FF                MOV     R7,A
+0030 120000      E     LCALL   _CapSense_PostScan
+                                           ; SOURCE LINE # 89
+0033 900000      E     MOV     DPTR,#CapSense_csv
+0036 E0                MOVX    A,@DPTR
+0037 FF                MOV     R7,A
+0038 EF                MOV     A,R7
+0039 5480              ANL     A,#080H
+003B FF                MOV     R7,A
+003C 7E00              MOV     R6,#00H
+003E EF                MOV     A,R7
+003F 4E                ORL     A,R6
+0040 6010              JZ      ?C0001
+                                           ; SOURCE LINE # 90
+                                           ; SOURCE LINE # 91
+0042 900000      E     MOV     DPTR,#CapSense_csv
+0045 E0                MOVX    A,@DPTR
+0046 FF                MOV     R7,A
+0047 EF                MOV     A,R7
+0048 54FE              ANL     A,#0FEH
+004A FF                MOV     R7,A
+004B 900000      E     MOV     DPTR,#CapSense_csv
+004E EF                MOV     A,R7
+004F F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 92
+0050 8030              SJMP    ?C0005
+0052         ?C0001:
+                                           ; SOURCE LINE # 94
+                                           ; SOURCE LINE # 96
+0052 900000      E     MOV     DPTR,#CapSense_sensorIndex
+0055 E0                MOVX    A,@DPTR
+0056 FF                MOV     R7,A
+0057 120000      E     LCALL   _?CapSense_FindNextSensor
+005A 900000      E     MOV     DPTR,#CapSense_sensorIndex
+C51 COMPILER V9.03   CAPSENSE_INT                                                          04/04/2015 14:09:08 PAGE 7   
+
+005D EF                MOV     A,R7
+005E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 99
+005F 900000      E     MOV     DPTR,#CapSense_sensorIndex
+0062 E0                MOVX    A,@DPTR
+0063 FF                MOV     R7,A
+0064 EF                MOV     A,R7
+0065 C3                CLR     C
+0066 9407              SUBB    A,#07H
+0068 500A              JNC     ?C0003
+                                           ; SOURCE LINE # 100
+                                           ; SOURCE LINE # 101
+006A 900000      E     MOV     DPTR,#CapSense_sensorIndex
+006D E0                MOVX    A,@DPTR
+006E FF                MOV     R7,A
+006F 120000      E     LCALL   _?CapSense_PreScan
+                                           ; SOURCE LINE # 102
+0072 800E              SJMP    ?C0005
+0074         ?C0003:
+                                           ; SOURCE LINE # 104
+                                           ; SOURCE LINE # 105
+0074 900000      E     MOV     DPTR,#CapSense_csv
+0077 E0                MOVX    A,@DPTR
+0078 FF                MOV     R7,A
+0079 EF                MOV     A,R7
+007A 54FE              ANL     A,#0FEH
+007C FF                MOV     R7,A
+007D 900000      E     MOV     DPTR,#CapSense_csv
+0080 EF                MOV     A,R7
+0081 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 106
+0082         ?C0004:
+                                           ; SOURCE LINE # 107
+0082         ?C0002:
+                                           ; SOURCE LINE # 108
+0082         ?C0005:
+0082 D007              POP     AR7
+0084 D006              POP     AR6
+0086 D005              POP     AR5
+0088 D004              POP     AR4
+008A D003              POP     AR3
+008C D002              POP     AR2
+008E D001              POP     AR1
+0090 D000              POP     AR0
+0092 D0D0              POP     PSW
+0094 D000        E     POP     ?C?XPAGE1SFR
+0096 D086              POP     DPS
+0098 D084              POP     DPL1
+009A D085              POP     DPH1
+009C D082              POP     DPL
+009E D083              POP     DPH
+00A0 D0F0              POP     B
+00A2 D0E0              POP     ACC
+00A4 32                RETI    
+             ; FUNCTION CapSense_IsrCH0_ISR (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    165    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+C51 COMPILER V9.03   CAPSENSE_INT                                                          04/04/2015 14:09:08 PAGE 8   
+
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

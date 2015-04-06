@@ -1,0 +1,359 @@
+C51 COMPILER V9.03   SENSORTIMER_PM                                                        04/04/2015 14:09:16 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE SENSORTIMER_PM
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\sensorTimer_PM.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\Gene
+                    -rated_Source\PSoC3\sensorTimer_PM.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\sensorTimer_PM.lst) CD DB NO
+                    -IP OT(0) INCDIR(Generated_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\sensorTimer_PM.obj)
+
+line level    source
+
+   1          /*******************************************************************************
+   2          * File Name: SensorTimer_PM.c
+   3          * Version 2.30
+   4          *
+   5          *  Description:
+   6          *     This file provides the power management source code to API for the
+   7          *     Timer.
+   8          *
+   9          *   Note:
+  10          *     None
+  11          *
+  12          *******************************************************************************
+  13          * Copyright 2008-2012, Cypress Semiconductor Corporation.  All rights reserved.
+  14          * You may use this file only in accordance with the license, terms, conditions,
+  15          * disclaimers, and limitations in the end user license agreement accompanying
+  16          * the software package with which this file was provided.
+  17          ********************************************************************************/
+  18          
+  19          #include "SensorTimer.h"
+  20          static SensorTimer_backupStruct SensorTimer_backup;
+  21          
+  22          
+  23          /*******************************************************************************
+  24          * Function Name: SensorTimer_SaveConfig
+  25          ********************************************************************************
+  26          *
+  27          * Summary:
+  28          *     Save the current user configuration
+  29          *
+  30          * Parameters:
+  31          *  void
+  32          *
+  33          * Return:
+  34          *  void
+  35          *
+  36          * Global variables:
+  37          *  SensorTimer_backup:  Variables of this global structure are modified to
+  38          *  store the values of non retention configuration registers when Sleep() API is
+  39          *  called.
+  40          *
+  41          *******************************************************************************/
+  42          void SensorTimer_SaveConfig(void) 
+  43          {
+  44   1          #if (!SensorTimer_UsingFixedFunction)
+  45   1              /* Backup the UDB non-rentention registers for PSoC5A*/
+  46   1              #if (CY_PSOC5A)
+                          SensorTimer_backup.TimerUdb = SensorTimer_ReadCounter();
+                          SensorTimer_backup.TimerPeriod = SensorTimer_ReadPeriod();
+                          SensorTimer_backup.InterruptMaskValue = SensorTimer_STATUS_MASK;
+                          #if (SensorTimer_UsingHWCaptureCounter)
+                              SensorTimer_backup.TimerCaptureCounter = SensorTimer_ReadCaptureCount();
+                          #endif /* Backup the UDB non-rentention register capture counter for PSoC5A */
+                      #endif /* Backup the UDB non-rentention registers for PSoC5A */
+C51 COMPILER V9.03   SENSORTIMER_PM                                                        04/04/2015 14:09:16 PAGE 2   
+
+  54   1      
+  55   1              #if (CY_PSOC3 || CY_PSOC5LP)
+  56   1                  SensorTimer_backup.TimerUdb = SensorTimer_ReadCounter();
+  57   1                  SensorTimer_backup.InterruptMaskValue = SensorTimer_STATUS_MASK;
+  58   1                  #if (SensorTimer_UsingHWCaptureCounter)
+                              SensorTimer_backup.TimerCaptureCounter = SensorTimer_ReadCaptureCount();
+                          #endif /* Back Up capture counter register  */
+  61   1              #endif /* Backup non retention registers, interrupt mask and capture counter for PSoC3 or PSoC5LP 
+             -*/
+  62   1      
+  63   1              #if(!SensorTimer_ControlRegRemoved)
+  64   1                  SensorTimer_backup.TimerControlRegister = SensorTimer_ReadControlRegister();
+  65   1              #endif /* Backup the enable state of the Timer component */
+  66   1          #endif /* Backup non retention registers in UDB implementation. All fixed function registers are reten
+             -tion */
+  67   1      }
+  68          
+  69          
+  70          /*******************************************************************************
+  71          * Function Name: SensorTimer_RestoreConfig
+  72          ********************************************************************************
+  73          *
+  74          * Summary:
+  75          *  Restores the current user configuration.
+  76          *
+  77          * Parameters:
+  78          *  void
+  79          *
+  80          * Return:
+  81          *  void
+  82          *
+  83          * Global variables:
+  84          *  SensorTimer_backup:  Variables of this global structure are used to
+  85          *  restore the values of non retention registers on wakeup from sleep mode.
+  86          *
+  87          *******************************************************************************/
+  88          void SensorTimer_RestoreConfig(void) 
+  89          {   
+  90   1          #if (!SensorTimer_UsingFixedFunction)
+  91   1              /* Restore the UDB non-rentention registers for PSoC5A */
+  92   1              #if (CY_PSOC5A)
+                          /* Interrupt State Backup for Critical Region*/
+                          uint8 SensorTimer_interruptState;
+              
+                          SensorTimer_WriteCounter(SensorTimer_backup.TimerUdb);
+                          SensorTimer_WritePeriod(SensorTimer_backup.TimerPeriod);
+                          /* CyEnterCriticalRegion and CyExitCriticalRegion are used to mark following region critical*/
+                          /* Enter Critical Region*/
+                          SensorTimer_interruptState = CyEnterCriticalSection();
+                          /* Use the interrupt output of the status register for IRQ output */
+                          SensorTimer_STATUS_AUX_CTRL |= SensorTimer_STATUS_ACTL_INT_EN_MASK;
+                          /* Exit Critical Region*/
+                          CyExitCriticalSection(SensorTimer_interruptState);
+                          SensorTimer_STATUS_MASK =SensorTimer_backup.InterruptMaskValue;
+                          #if (SensorTimer_UsingHWCaptureCounter)
+                              SensorTimer_SetCaptureCount(SensorTimer_backup.TimerCaptureCounter);
+                          #endif /* Restore the UDB non-rentention register capture counter for PSoC5A */
+                      #endif /* Restore the UDB non-rentention registers for PSoC5A */
+ 110   1      
+ 111   1              #if (CY_PSOC3 || CY_PSOC5LP)
+ 112   1                  SensorTimer_WriteCounter(SensorTimer_backup.TimerUdb);
+ 113   1                  SensorTimer_STATUS_MASK =SensorTimer_backup.InterruptMaskValue;
+C51 COMPILER V9.03   SENSORTIMER_PM                                                        04/04/2015 14:09:16 PAGE 3   
+
+ 114   1                  #if (SensorTimer_UsingHWCaptureCounter)
+                              SensorTimer_SetCaptureCount(SensorTimer_backup.TimerCaptureCounter);
+                          #endif /* Restore Capture counter register*/
+ 117   1              #endif /* Restore up non retention registers, interrupt mask and capture counter for PSoC3 or PSoC
+             -5LP */
+ 118   1      
+ 119   1              #if(!SensorTimer_ControlRegRemoved)
+ 120   1                  SensorTimer_WriteControlRegister(SensorTimer_backup.TimerControlRegister);
+ 121   1              #endif /* Restore the enable state of the Timer component */
+ 122   1          #endif /* Restore non retention registers in the UDB implementation only */
+ 123   1      }
+ 124          
+ 125          
+ 126          /*******************************************************************************
+ 127          * Function Name: SensorTimer_Sleep
+ 128          ********************************************************************************
+ 129          *
+ 130          * Summary:
+ 131          *     Stop and Save the user configuration
+ 132          *
+ 133          * Parameters:
+ 134          *  void
+ 135          *
+ 136          * Return:
+ 137          *  void
+ 138          *
+ 139          * Global variables:
+ 140          *  SensorTimer_backup.TimerEnableState:  Is modified depending on the
+ 141          *  enable state of the block before entering sleep mode.
+ 142          *
+ 143          *******************************************************************************/
+ 144          void SensorTimer_Sleep(void) 
+ 145          {
+ 146   1          #if(!SensorTimer_ControlRegRemoved)
+ 147   1              /* Save Counter's enable state */
+ 148   1              if(SensorTimer_CTRL_ENABLE == (SensorTimer_CONTROL & SensorTimer_CTRL_ENABLE))
+ 149   1              {
+ 150   2                  /* Timer is enabled */
+ 151   2                  SensorTimer_backup.TimerEnableState = 1u;
+ 152   2              }
+ 153   1              else
+ 154   1              {
+ 155   2                  /* Timer is disabled */
+ 156   2                  SensorTimer_backup.TimerEnableState = 0u;
+ 157   2              }
+ 158   1          #endif /* Back up enable state from the Timer control register */
+ 159   1          SensorTimer_Stop();
+ 160   1          SensorTimer_SaveConfig();
+ 161   1      }
+ 162          
+ 163          
+ 164          /*******************************************************************************
+ 165          * Function Name: SensorTimer_Wakeup
+ 166          ********************************************************************************
+ 167          *
+ 168          * Summary:
+ 169          *  Restores and enables the user configuration
+ 170          *
+ 171          * Parameters:
+ 172          *  void
+ 173          *
+ 174          * Return:
+C51 COMPILER V9.03   SENSORTIMER_PM                                                        04/04/2015 14:09:16 PAGE 4   
+
+ 175          *  void
+ 176          *
+ 177          * Global variables:
+ 178          *  SensorTimer_backup.enableState:  Is used to restore the enable state of
+ 179          *  block on wakeup from sleep mode.
+ 180          *
+ 181          *******************************************************************************/
+ 182          void SensorTimer_Wakeup(void) 
+ 183          {
+ 184   1          SensorTimer_RestoreConfig();
+ 185   1          #if(!SensorTimer_ControlRegRemoved)
+ 186   1              if(SensorTimer_backup.TimerEnableState == 1u)
+ 187   1              {     /* Enable Timer's operation */
+ 188   2                      SensorTimer_Enable();
+ 189   2              } /* Do nothing if Timer was disabled before */
+ 190   1          #endif /* Remove this code section if Control register is removed */
+ 191   1      }
+ 192          
+ 193          
+ 194          /* [] END OF FILE */
+C51 COMPILER V9.03   SENSORTIMER_PM                                                        04/04/2015 14:09:16 PAGE 5   
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION SensorTimer_SaveConfig (BEGIN)
+                                           ; SOURCE LINE # 42
+                                           ; SOURCE LINE # 43
+                                           ; SOURCE LINE # 56
+0000 120000      E     LCALL   SensorTimer_ReadCounter
+0003 900000      R     MOV     DPTR,#SensorTimer_backup+01H
+0006 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 57
+0009 906484            MOV     DPTR,#06484H
+000C E0                MOVX    A,@DPTR
+000D FF                MOV     R7,A
+000E 900000      R     MOV     DPTR,#SensorTimer_backup+05H
+0011 EF                MOV     A,R7
+0012 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 64
+0013 120000      E     LCALL   SensorTimer_ReadControlRegister
+0016 900000      R     MOV     DPTR,#SensorTimer_backup+06H
+0019 EF                MOV     A,R7
+001A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 67
+001B         ?C0001:
+001B 22                RET     
+             ; FUNCTION SensorTimer_SaveConfig (END)
+
+             ; FUNCTION SensorTimer_RestoreConfig (BEGIN)
+                                           ; SOURCE LINE # 88
+                                           ; SOURCE LINE # 89
+                                           ; SOURCE LINE # 112
+0000 900000      R     MOV     DPTR,#SensorTimer_backup+01H
+0003 E0                MOVX    A,@DPTR
+0004 FC                MOV     R4,A
+0005 A3                INC     DPTR
+0006 E0                MOVX    A,@DPTR
+0007 FD                MOV     R5,A
+0008 A3                INC     DPTR
+0009 E0                MOVX    A,@DPTR
+000A FE                MOV     R6,A
+000B A3                INC     DPTR
+000C E0                MOVX    A,@DPTR
+000D FF                MOV     R7,A
+000E 120000      E     LCALL   _SensorTimer_WriteCounter
+                                           ; SOURCE LINE # 113
+0011 900000      R     MOV     DPTR,#SensorTimer_backup+05H
+0014 E0                MOVX    A,@DPTR
+0015 FF                MOV     R7,A
+0016 906484            MOV     DPTR,#06484H
+0019 EF                MOV     A,R7
+001A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 120
+001B 900000      R     MOV     DPTR,#SensorTimer_backup+06H
+001E E0                MOVX    A,@DPTR
+001F FF                MOV     R7,A
+0020 120000      E     LCALL   _SensorTimer_WriteControlRegister
+                                           ; SOURCE LINE # 123
+0023         ?C0002:
+0023 22                RET     
+             ; FUNCTION SensorTimer_RestoreConfig (END)
+
+             ; FUNCTION SensorTimer_Sleep (BEGIN)
+C51 COMPILER V9.03   SENSORTIMER_PM                                                        04/04/2015 14:09:16 PAGE 6   
+
+                                           ; SOURCE LINE # 144
+                                           ; SOURCE LINE # 145
+                                           ; SOURCE LINE # 148
+0000 906475            MOV     DPTR,#06475H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 5480              ANL     A,#080H
+0008 FF                MOV     R7,A
+0009 7E00              MOV     R6,#00H
+000B EF                MOV     A,R7
+000C 6480              XRL     A,#080H
+000E 4E                ORL     A,R6
+000F 7008              JNZ     ?C0003
+                                           ; SOURCE LINE # 149
+                                           ; SOURCE LINE # 151
+0011 900000      R     MOV     DPTR,#SensorTimer_backup
+0014 7401              MOV     A,#01H
+0016 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 152
+0017 8005              SJMP    ?C0004
+0019         ?C0003:
+                                           ; SOURCE LINE # 154
+                                           ; SOURCE LINE # 156
+0019 900000      R     MOV     DPTR,#SensorTimer_backup
+001C E4                CLR     A
+001D F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 157
+001E         ?C0004:
+                                           ; SOURCE LINE # 159
+001E 120000      E     LCALL   SensorTimer_Stop
+                                           ; SOURCE LINE # 160
+0021 120000      R     LCALL   SensorTimer_SaveConfig
+                                           ; SOURCE LINE # 161
+0024         ?C0005:
+0024 22                RET     
+             ; FUNCTION SensorTimer_Sleep (END)
+
+             ; FUNCTION SensorTimer_Wakeup (BEGIN)
+                                           ; SOURCE LINE # 182
+                                           ; SOURCE LINE # 183
+                                           ; SOURCE LINE # 184
+0000 120000      R     LCALL   SensorTimer_RestoreConfig
+                                           ; SOURCE LINE # 186
+0003 900000      R     MOV     DPTR,#SensorTimer_backup
+0006 E0                MOVX    A,@DPTR
+0007 FF                MOV     R7,A
+0008 EF                MOV     A,R7
+0009 B40103            CJNE    A,#01H,?C0007
+                                           ; SOURCE LINE # 187
+                                           ; SOURCE LINE # 188
+000C 120000      E     LCALL   SensorTimer_Enable
+                                           ; SOURCE LINE # 189
+000F         ?C0006:
+                                           ; SOURCE LINE # 191
+000F         ?C0007:
+000F 22                RET     
+             ; FUNCTION SensorTimer_Wakeup (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+C51 COMPILER V9.03   SENSORTIMER_PM                                                        04/04/2015 14:09:16 PAGE 7   
+
+   CODE SIZE        =    117    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      7    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

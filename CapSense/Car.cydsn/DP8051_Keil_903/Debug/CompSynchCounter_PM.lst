@@ -1,0 +1,346 @@
+C51 COMPILER V9.03   COMPSYNCHCOUNTER_PM                                                   04/01/2015 22:10:43 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE COMPSYNCHCOUNTER_PM
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\CompSynchCounter_PM.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\Gene
+                    -rated_Source\PSoC3\CompSynchCounter_PM.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\CompSynchCounter_PM.lst
+                    -) CD DB NOIP OT(0) INCDIR(Generated_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\CompSynchCounter_PM.obj)
+
+line level    source
+
+   1          /*******************************************************************************
+   2          * File Name: CompSynchCounter_PM.c  
+   3          * Version 2.20
+   4          *
+   5          *  Description:
+   6          *    This file provides the power management source code to API for the
+   7          *    Counter.  
+   8          *
+   9          *   Note:
+  10          *     None
+  11          *
+  12          *******************************************************************************
+  13          * Copyright 2008-2012, Cypress Semiconductor Corporation.  All rights reserved.
+  14          * You may use this file only in accordance with the license, terms, conditions, 
+  15          * disclaimers, and limitations in the end user license agreement accompanying 
+  16          * the software package with which this file was provided.
+  17          ********************************************************************************/
+  18          
+  19          #include "CompSynchCounter.h"
+  20          
+  21          static CompSynchCounter_backupStruct CompSynchCounter_backup;
+  22          
+  23          
+  24          /*******************************************************************************
+  25          * Function Name: CompSynchCounter_SaveConfig
+  26          ********************************************************************************
+  27          * Summary:
+  28          *     Save the current user configuration
+  29          *
+  30          * Parameters:  
+  31          *  void
+  32          *
+  33          * Return: 
+  34          *  void
+  35          *
+  36          * Global variables:
+  37          *  CompSynchCounter_backup:  Variables of this global structure are modified to 
+  38          *  store the values of non retention configuration registers when Sleep() API is 
+  39          *  called.
+  40          *
+  41          *******************************************************************************/
+  42          void CompSynchCounter_SaveConfig(void) 
+  43          {
+  44   1          #if (!CompSynchCounter_UsingFixedFunction)
+  45   1              /* Backup the UDB non-rentention registers for PSoC5A */
+  46   1              #if (CY_PSOC5A)
+                          CompSynchCounter_backup.CounterUdb = CompSynchCounter_ReadCounter();
+                          CompSynchCounter_backup.CounterPeriod = CompSynchCounter_ReadPeriod();
+                          CompSynchCounter_backup.CompareValue = CompSynchCounter_ReadCompare();
+                          CompSynchCounter_backup.InterruptMaskValue = CompSynchCounter_STATUS_MASK;
+                      #endif /* (CY_PSOC5A) */
+  52   1              
+  53   1              #if (CY_PSOC3 || CY_PSOC5LP)
+C51 COMPILER V9.03   COMPSYNCHCOUNTER_PM                                                   04/01/2015 22:10:43 PAGE 2   
+
+  54   1                  CompSynchCounter_backup.CounterUdb = CompSynchCounter_ReadCounter();
+  55   1                  CompSynchCounter_backup.InterruptMaskValue = CompSynchCounter_STATUS_MASK;
+  56   1              #endif /* (CY_PSOC3 || CY_PSOC5LP) */
+  57   1              
+  58   1              #if(!CompSynchCounter_ControlRegRemoved)
+  59   1                  CompSynchCounter_backup.CounterControlRegister = CompSynchCounter_ReadControlRegister();
+  60   1              #endif /* (!CompSynchCounter_ControlRegRemoved) */
+  61   1          #endif /* (!CompSynchCounter_UsingFixedFunction) */
+  62   1      }
+  63          
+  64          
+  65          /*******************************************************************************
+  66          * Function Name: CompSynchCounter_RestoreConfig
+  67          ********************************************************************************
+  68          *
+  69          * Summary:
+  70          *  Restores the current user configuration.
+  71          *
+  72          * Parameters:  
+  73          *  void
+  74          *
+  75          * Return: 
+  76          *  void
+  77          *
+  78          * Global variables:
+  79          *  CompSynchCounter_backup:  Variables of this global structure are used to 
+  80          *  restore the values of non retention registers on wakeup from sleep mode.
+  81          *
+  82          *******************************************************************************/
+  83          void CompSynchCounter_RestoreConfig(void) 
+  84          {      
+  85   1          #if (!CompSynchCounter_UsingFixedFunction)     
+  86   1              /* Restore the UDB non-rentention registers for PSoC5A */
+  87   1              #if (CY_PSOC5A)
+                          /* Interrupt State Backup for Critical Region*/
+                          uint8 CompSynchCounter_interruptState;
+                      
+                          CompSynchCounter_WriteCounter(CompSynchCounter_backup.CounterUdb);
+                          CompSynchCounter_WritePeriod(CompSynchCounter_backup.CounterPeriod);
+                          CompSynchCounter_WriteCompare(CompSynchCounter_backup.CompareValue);
+                          /* Enter Critical Region*/
+                          CompSynchCounter_interruptState = CyEnterCriticalSection();
+                      
+                          CompSynchCounter_STATUS_AUX_CTRL |= CompSynchCounter_STATUS_ACTL_INT_EN_MASK;
+                          /* Exit Critical Region*/
+                          CyExitCriticalSection(CompSynchCounter_interruptState);
+                          CompSynchCounter_STATUS_MASK = CompSynchCounter_backup.InterruptMaskValue;
+                      #endif  /* (CY_PSOC5A) */
+ 102   1              
+ 103   1              #if (CY_PSOC3 || CY_PSOC5LP)
+ 104   1                  CompSynchCounter_WriteCounter(CompSynchCounter_backup.CounterUdb);
+ 105   1                  CompSynchCounter_STATUS_MASK = CompSynchCounter_backup.InterruptMaskValue;
+ 106   1              #endif /* (CY_PSOC3 || CY_PSOC5LP) */
+ 107   1              
+ 108   1              #if(!CompSynchCounter_ControlRegRemoved)
+ 109   1                  CompSynchCounter_WriteControlRegister(CompSynchCounter_backup.CounterControlRegister);
+ 110   1              #endif /* (!CompSynchCounter_ControlRegRemoved) */
+ 111   1          #endif /* (!CompSynchCounter_UsingFixedFunction) */
+ 112   1      }
+ 113          
+ 114          
+ 115          /*******************************************************************************
+C51 COMPILER V9.03   COMPSYNCHCOUNTER_PM                                                   04/01/2015 22:10:43 PAGE 3   
+
+ 116          * Function Name: CompSynchCounter_Sleep
+ 117          ********************************************************************************
+ 118          * Summary:
+ 119          *     Stop and Save the user configuration
+ 120          *
+ 121          * Parameters:  
+ 122          *  void
+ 123          *
+ 124          * Return: 
+ 125          *  void
+ 126          *
+ 127          * Global variables:
+ 128          *  CompSynchCounter_backup.enableState:  Is modified depending on the enable 
+ 129          *  state of the block before entering sleep mode.
+ 130          *
+ 131          *******************************************************************************/
+ 132          void CompSynchCounter_Sleep(void) 
+ 133          {
+ 134   1          #if(!CompSynchCounter_ControlRegRemoved)
+ 135   1              /* Save Counter's enable state */
+ 136   1              if(CompSynchCounter_CTRL_ENABLE == (CompSynchCounter_CONTROL & CompSynchCounter_CTRL_ENABLE))
+ 137   1              {
+ 138   2                  /* Counter is enabled */
+ 139   2                  CompSynchCounter_backup.CounterEnableState = 1u;
+ 140   2              }
+ 141   1              else
+ 142   1              {
+ 143   2                  /* Counter is disabled */
+ 144   2                  CompSynchCounter_backup.CounterEnableState = 0u;
+ 145   2              }
+ 146   1          #endif /* (!CompSynchCounter_ControlRegRemoved) */
+ 147   1          CompSynchCounter_Stop();
+ 148   1          CompSynchCounter_SaveConfig();
+ 149   1      }
+ 150          
+ 151          
+ 152          /*******************************************************************************
+ 153          * Function Name: CompSynchCounter_Wakeup
+ 154          ********************************************************************************
+ 155          *
+ 156          * Summary:
+ 157          *  Restores and enables the user configuration
+ 158          *  
+ 159          * Parameters:  
+ 160          *  void
+ 161          *
+ 162          * Return: 
+ 163          *  void
+ 164          *
+ 165          * Global variables:
+ 166          *  CompSynchCounter_backup.enableState:  Is used to restore the enable state of 
+ 167          *  block on wakeup from sleep mode.
+ 168          *
+ 169          *******************************************************************************/
+ 170          void CompSynchCounter_Wakeup(void) 
+ 171          {
+ 172   1          CompSynchCounter_RestoreConfig();
+ 173   1          #if(!CompSynchCounter_ControlRegRemoved)
+ 174   1              if(CompSynchCounter_backup.CounterEnableState == 1u)
+ 175   1              {
+ 176   2                  /* Enable Counter's operation */
+ 177   2                  CompSynchCounter_Enable();
+C51 COMPILER V9.03   COMPSYNCHCOUNTER_PM                                                   04/01/2015 22:10:43 PAGE 4   
+
+ 178   2              } /* Do nothing if Counter was disabled before */    
+ 179   1          #endif /* (!CompSynchCounter_ControlRegRemoved) */
+ 180   1          
+ 181   1      }
+ 182          
+ 183          
+ 184          /* [] END OF FILE */
+C51 COMPILER V9.03   COMPSYNCHCOUNTER_PM                                                   04/01/2015 22:10:43 PAGE 5   
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION CompSynchCounter_SaveConfig (BEGIN)
+                                           ; SOURCE LINE # 42
+                                           ; SOURCE LINE # 43
+                                           ; SOURCE LINE # 54
+0000 120000      E     LCALL   CompSynchCounter_ReadCounter
+0003 900000      R     MOV     DPTR,#CompSynchCounter_backup+01H
+0006 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 55
+0009 906483            MOV     DPTR,#06483H
+000C E0                MOVX    A,@DPTR
+000D FF                MOV     R7,A
+000E 900000      R     MOV     DPTR,#CompSynchCounter_backup+05H
+0011 EF                MOV     A,R7
+0012 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 59
+0013 120000      E     LCALL   CompSynchCounter_ReadControlRegister
+0016 900000      R     MOV     DPTR,#CompSynchCounter_backup+06H
+0019 EF                MOV     A,R7
+001A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 62
+001B         ?C0001:
+001B 22                RET     
+             ; FUNCTION CompSynchCounter_SaveConfig (END)
+
+             ; FUNCTION CompSynchCounter_RestoreConfig (BEGIN)
+                                           ; SOURCE LINE # 83
+                                           ; SOURCE LINE # 84
+                                           ; SOURCE LINE # 104
+0000 900000      R     MOV     DPTR,#CompSynchCounter_backup+01H
+0003 E0                MOVX    A,@DPTR
+0004 FC                MOV     R4,A
+0005 A3                INC     DPTR
+0006 E0                MOVX    A,@DPTR
+0007 FD                MOV     R5,A
+0008 A3                INC     DPTR
+0009 E0                MOVX    A,@DPTR
+000A FE                MOV     R6,A
+000B A3                INC     DPTR
+000C E0                MOVX    A,@DPTR
+000D FF                MOV     R7,A
+000E 120000      E     LCALL   _CompSynchCounter_WriteCounter
+                                           ; SOURCE LINE # 105
+0011 900000      R     MOV     DPTR,#CompSynchCounter_backup+05H
+0014 E0                MOVX    A,@DPTR
+0015 FF                MOV     R7,A
+0016 906483            MOV     DPTR,#06483H
+0019 EF                MOV     A,R7
+001A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 109
+001B 900000      R     MOV     DPTR,#CompSynchCounter_backup+06H
+001E E0                MOVX    A,@DPTR
+001F FF                MOV     R7,A
+0020 120000      E     LCALL   _CompSynchCounter_WriteControlRegister
+                                           ; SOURCE LINE # 112
+0023         ?C0002:
+0023 22                RET     
+             ; FUNCTION CompSynchCounter_RestoreConfig (END)
+
+             ; FUNCTION CompSynchCounter_Sleep (BEGIN)
+C51 COMPILER V9.03   COMPSYNCHCOUNTER_PM                                                   04/01/2015 22:10:43 PAGE 6   
+
+                                           ; SOURCE LINE # 132
+                                           ; SOURCE LINE # 133
+                                           ; SOURCE LINE # 136
+0000 906471            MOV     DPTR,#06471H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 5480              ANL     A,#080H
+0008 FF                MOV     R7,A
+0009 7E00              MOV     R6,#00H
+000B EF                MOV     A,R7
+000C 6480              XRL     A,#080H
+000E 4E                ORL     A,R6
+000F 7008              JNZ     ?C0003
+                                           ; SOURCE LINE # 137
+                                           ; SOURCE LINE # 139
+0011 900000      R     MOV     DPTR,#CompSynchCounter_backup
+0014 7401              MOV     A,#01H
+0016 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 140
+0017 8005              SJMP    ?C0004
+0019         ?C0003:
+                                           ; SOURCE LINE # 142
+                                           ; SOURCE LINE # 144
+0019 900000      R     MOV     DPTR,#CompSynchCounter_backup
+001C E4                CLR     A
+001D F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 145
+001E         ?C0004:
+                                           ; SOURCE LINE # 147
+001E 120000      E     LCALL   CompSynchCounter_Stop
+                                           ; SOURCE LINE # 148
+0021 120000      R     LCALL   CompSynchCounter_SaveConfig
+                                           ; SOURCE LINE # 149
+0024         ?C0005:
+0024 22                RET     
+             ; FUNCTION CompSynchCounter_Sleep (END)
+
+             ; FUNCTION CompSynchCounter_Wakeup (BEGIN)
+                                           ; SOURCE LINE # 170
+                                           ; SOURCE LINE # 171
+                                           ; SOURCE LINE # 172
+0000 120000      R     LCALL   CompSynchCounter_RestoreConfig
+                                           ; SOURCE LINE # 174
+0003 900000      R     MOV     DPTR,#CompSynchCounter_backup
+0006 E0                MOVX    A,@DPTR
+0007 FF                MOV     R7,A
+0008 EF                MOV     A,R7
+0009 B40103            CJNE    A,#01H,?C0007
+                                           ; SOURCE LINE # 175
+                                           ; SOURCE LINE # 177
+000C 120000      E     LCALL   CompSynchCounter_Enable
+                                           ; SOURCE LINE # 178
+000F         ?C0006:
+                                           ; SOURCE LINE # 181
+000F         ?C0007:
+000F 22                RET     
+             ; FUNCTION CompSynchCounter_Wakeup (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+C51 COMPILER V9.03   COMPSYNCHCOUNTER_PM                                                   04/01/2015 22:10:43 PAGE 7   
+
+   CODE SIZE        =    117    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      7    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

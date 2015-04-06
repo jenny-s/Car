@@ -1,0 +1,294 @@
+C51 COMPILER V9.03   CAPSENSE_TUNERHELPER                                                  04/04/2015 14:09:09 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE CAPSENSE_TUNERHELPER
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\CapSense_TunerHelper.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\Gene
+                    -rated_Source\PSoC3\CapSense_TunerHelper.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\CapSense_TunerHelper.l
+                    -st) CD DB NOIP OT(0) INCDIR(Generated_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\CapSense_TunerHelper.obj)
+
+line level    source
+
+   1          /*******************************************************************************
+   2          * File Name: CapSense_TunerHelper.c
+   3          * Version 3.20
+   4          *
+   5          * Description:
+   6          *  This file provides the source code of Tuner helper APIs for the CapSense CSD 
+   7          *  component.
+   8          *
+   9          * Note:
+  10          *
+  11          ********************************************************************************
+  12          * Copyright 2008-2012, Cypress Semiconductor Corporation.  All rights reserved.
+  13          * You may use this file only in accordance with the license, terms, conditions,
+  14          * disclaimers, and limitations in the end user license agreement accompanying
+  15          * the software package with which this file was provided.
+  16          *******************************************************************************/
+  17          
+  18          #include "CapSense_TunerHelper.h"
+  19          
+  20          #if (CapSense_TUNER_API_GENERATE)
+                  void CapSense_ProcessAllWidgets(volatile CapSense_OUTBOX *outbox)
+                                                              ;
+                  
+                  volatile CapSense_MAILBOXES CapSense_mailboxesComm;
+              
+                  extern uint8 CapSense_SensorOnMask[(((CapSense_TOTAL_SENSOR_COUNT - 1u) / 8u) + 1u)];
+              #endif  /* (CapSense_TUNER_API_GENERATE) */
+  28          
+  29          
+  30          /*******************************************************************************
+  31          * Function Name: CapSense_TunerStart
+  32          ********************************************************************************
+  33          *
+  34          * Summary:
+  35          *  Initializes CapSense CSD component and EzI2C communication componenet to use
+  36          *  mailbox data structure for communication with Tuner GUI.
+  37          *  Start the scanning, after initialization complete.
+  38          *
+  39          * Parameters:
+  40          *  None
+  41          *
+  42          * Return:
+  43          *  None
+  44          *
+  45          * Reentrant:
+  46          *  No
+  47          *
+  48          *******************************************************************************/
+  49          void CapSense_TunerStart(void) 
+  50          {
+  51   1          #if (CapSense_TUNER_API_GENERATE)
+                      
+                      /* Init mbx and quick check */
+C51 COMPILER V9.03   CAPSENSE_TUNERHELPER                                                  04/04/2015 14:09:09 PAGE 2   
+
+                      CapSense_InitMailbox(&CapSense_mailboxesComm.csdMailbox);
+                      CapSense_mailboxesComm.numMailBoxes = CapSense_DEFAULT_MAILBOXES_NUMBER;
+                      
+                      /* Start CapSense and baselines */
+                      CapSense_Start();
+                      
+                      /* Initialize baselines */ 
+                      CapSense_InitializeAllBaselines();
+                      CapSense_InitializeAllBaselines();
+                      
+                      /* Start EzI2C, clears buf pointers */
+                      EzI2C_Start();
+                      
+                      /* Setup EzI2C buffers */
+                      EzI2C_SetBuffer1(sizeof(CapSense_mailboxesComm), sizeof(CapSense_mailboxesComm),
+                                                      (void *) &CapSense_mailboxesComm);
+                      
+                      /* Starts scan all enabled sensors */
+                      CapSense_ScanEnabledWidgets();
+                  
+                  #endif  /* (CapSense_TUNER_API_GENERATE) */
+  75   1      }
+  76          
+  77          
+  78          /*******************************************************************************
+  79          * Function Name: CapSense_TunerComm
+  80          ********************************************************************************
+  81          *
+  82          * Summary:
+  83          *  This function is blocking. It waits till scaning loop is completed and apply
+  84          *  new parameters from Tuner GUI if available (manual tuning mode only). Updates
+  85          *  enabled baselines and state of widgets. Waits while Tuner GUI reports that 
+  86          *  content of mailbox could be modified. Then loads the report data into outbox 
+  87          *  and sets the busy flag. Starts new scanning loop.
+  88          *  
+  89          * Parameters:
+  90          *  None
+  91          *
+  92          * Return:
+  93          *  None
+  94          *
+  95          * Reentrant:
+  96          *  No
+  97          *
+  98          *******************************************************************************/
+  99          void CapSense_TunerComm(void) 
+ 100          {
+ 101   1          #if (CapSense_TUNER_API_GENERATE)
+                      if (0u == CapSense_IsBusy())
+                      {   
+                          /* Apply new settings */
+                          #if (CapSense_TUNING_METHOD == CapSense_MANUAL_TUNING)
+                              CapSense_ReadMessage(&CapSense_mailboxesComm.csdMailbox);
+                          #endif  /* (CapSense_TUNING_METHOD == CapSense_MANUAL_TUNING) */
+              
+                          /* Update all baselines and process all widgets */
+                          CapSense_UpdateEnabledBaselines();
+                          CapSense_ProcessAllWidgets(&CapSense_mailboxesComm.csdMailbox.outbox);
+                          CapSense_PostMessage(&CapSense_mailboxesComm.csdMailbox);
+              
+                          /* Enable EZI2C interrupts, after scan complete */
+                          EzI2C_EnableInt();
+C51 COMPILER V9.03   CAPSENSE_TUNERHELPER                                                  04/04/2015 14:09:09 PAGE 3   
+
+              
+                          while((CapSense_mailboxesComm.csdMailbox.type != CapSense_TYPE_ID) || \
+                                (EzI2C_GetActivity() & EzI2C_STATUS_BUSY)){}
+                          
+                          /* Disable EZI2C interrupts, while scanning */
+                          EzI2C_DisableInt();
+                          
+                          /* Start scan all sensors */
+                          CapSense_ScanEnabledWidgets();
+                      }
+                  #endif /* (CapSense_TUNER_API_GENERATE) */
+ 127   1      }
+ 128          
+ 129          
+ 130          #if (CapSense_TUNER_API_GENERATE)
+                  /*******************************************************************************
+                  * Function Name: CapSense_ProcessAllWidgets
+                  ********************************************************************************
+                  *
+                  * Summary:
+                  *  Call required functions to update all widgets state:
+                  *   - CapSense_GetCentroidPos() - calls only if linear sliders 
+                  *     available.
+                  *   - CapSense_GetRadialCentroidPos() - calls only if radial slider 
+                  *     available.
+                  *   - CapSense_GetTouchCentroidPos() - calls only if touch pad slider 
+                  *     available.
+                  *   - CapSense_CheckIsAnyWidgetActive();
+                  *  The results of opeartions are copied to OUTBOX.
+                  *   
+                  * Parameters:
+                  *  None
+                  *
+                  * Return:
+                  *  None
+                  *
+                  * Global Variables:
+                  *  CapSense_OUTBOX outbox - structure which is used as ouput 
+                  *  buffer for report data to Tuner GUI.
+                  *  Update fields:
+                  *    - position[];
+                  *    - OnMask[];
+                  *
+                  * Reentrant:
+                  *  No
+                  *
+                  *******************************************************************************/
+                  void CapSense_ProcessAllWidgets(volatile CapSense_OUTBOX *outbox)
+                                                              
+                  {
+                      uint8 i = 0u;
+              
+                      #if (CapSense_TOTAL_TOUCH_PADS_COUNT)
+                          uint16 pos[2];
+                      #endif  /* (CapSense_TOTAL_TOUCH_PADS_COUNT) */
+                      
+                      #if ( (CapSense_TOTAL_RADIAL_SLIDERS_COUNT) || (CapSense_TOTAL_TOUCH_PADS_COUNT) || \
+                            (CapSense_TOTAL_MATRIX_BUTTONS_COUNT) )
+                          uint8 widgetCnt = 0u;
+                      #endif  /* ((CapSense_TOTAL_RADIAL_SLIDERS_COUNT) || (CapSense_TOTAL_TOUCH_PADS_COUNT)) || 
+                              *   (CapSense_TOTAL_MATRIX_BUTTONS_COUNT)
+                              */
+C51 COMPILER V9.03   CAPSENSE_TUNERHELPER                                                  04/04/2015 14:09:09 PAGE 4   
+
+                      
+                      /* Calculate widget with centroids */
+                      #if (CapSense_TOTAL_LINEAR_SLIDERS_COUNT)
+                          for(; i < CapSense_TOTAL_LINEAR_SLIDERS_COUNT; i++)
+                          {
+                              outbox->position[i] = CapSense_SWAP_ENDIAN16(CapSense_GetCentroidPos(i));
+                          }
+                      #endif /* (CapSense_TOTAL_LINEAR_SLIDERS_COUNT) */
+                      
+                      #if (CapSense_TOTAL_RADIAL_SLIDERS_COUNT)
+                          widgetCnt = i;
+                          for(; i < widgetCnt + CapSense_TOTAL_RADIAL_SLIDERS_COUNT; i++)
+                          {
+                              outbox->position[i] = CapSense_SWAP_ENDIAN16(CapSense_GetRadialCentroidPos(i));
+                          }
+                      #endif /* (CapSense_TOTAL_RADIAL_SLIDERS_COUNT) */
+                      
+                      #if (CapSense_TOTAL_TOUCH_PADS_COUNT)
+                          widgetCnt = i;
+                          for(; i < (widgetCnt + (CapSense_TOTAL_TOUCH_PADS_COUNT * 2)); i=i+2)
+                          {
+                              if(CapSense_GetTouchCentroidPos(i, pos) == 0u)
+                              {
+                                  outbox->position[i] = 0xFFFFu;
+                                  outbox->position[i+1] = 0xFFFFu;
+                              }
+                              else
+                              {
+                                  outbox->position[i] = CapSense_SWAP_ENDIAN16( (uint16) pos[0u]);
+                                  outbox->position[i+1] = CapSense_SWAP_ENDIAN16( (uint16) pos[1u]);
+                              }
+                          }
+                      #endif /* (CapSense_TOTAL_TOUCH_PADS_COUNT) */
+              
+                      #if (CapSense_TOTAL_MATRIX_BUTTONS_COUNT)
+                          i += CapSense_TOTAL_BUTTONS_COUNT;
+                          widgetCnt = 0;
+                          for(; widgetCnt < (CapSense_TOTAL_MATRIX_BUTTONS_COUNT * 2); i += 2)
+                          {
+                              if(CapSense_GetMatrixButtonPos(i, ((uint8*) &outbox->mb_position[widgetCnt])) == 0)
+                              {
+                                  outbox->mb_position[widgetCnt] = 0xFFu;
+                                  outbox->mb_position[widgetCnt+1] = 0xFF;
+                              }
+                              widgetCnt += 2;
+                          }
+                      #endif /* (CapSense_TOTAL_MATRIX_BUTTONS_COUNT) */
+              
+                      /* Update On/Off State */
+                      CapSense_CheckIsAnyWidgetActive();
+              
+                      /* Copy OnMask */
+                      for(i=0; i < CapSense_TOTAL_SENSOR_MASK_COUNT; i++)
+                      {
+                          outbox->onMask[i]  = CapSense_SensorOnMask[i];
+                      }
+                  }
+              #endif /* (CapSense_TUNER_API_GENERATE) */
+ 236          
+ 237          
+ 238          /* [] END OF FILE */
+C51 COMPILER V9.03   CAPSENSE_TUNERHELPER                                                  04/04/2015 14:09:09 PAGE 5   
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION CapSense_TunerStart (BEGIN)
+                                           ; SOURCE LINE # 49
+                                           ; SOURCE LINE # 50
+                                           ; SOURCE LINE # 75
+0000         ?C0001:
+0000 22                RET     
+             ; FUNCTION CapSense_TunerStart (END)
+
+             ; FUNCTION CapSense_TunerComm (BEGIN)
+                                           ; SOURCE LINE # 99
+                                           ; SOURCE LINE # 100
+                                           ; SOURCE LINE # 127
+0000         ?C0002:
+0000 22                RET     
+             ; FUNCTION CapSense_TunerComm (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =      2    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

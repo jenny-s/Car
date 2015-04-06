@@ -1,0 +1,601 @@
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE SPEEDCONTROL
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\speedControl.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\spee
+                    -dControl.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\speedControl.lst) CD DB NOIP OT(2,SIZE) INCDIR(Genera
+                    -ted_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\speedControl.obj)
+
+line level    source
+
+   1          /******************************************************************************
+   2           * File Name: speedControl.c
+   3           * Version 1.1
+   4           * 
+   5           * Authors: Jenny & Allie
+   6           * 
+   7           * Description:
+   8           * Speed Control using PI control
+   9           * 
+  10           * Dependencies: stdio.h, device.h, speedcontrol.h
+  11           * 
+  12           * Code Tested with: 
+  13           * PSoC Creator: PSoC Creator 2.1
+  14           * Device tested with: CY8C3866AXI-040 
+  15           * Compiler: DP8051 Keil 8.16
+  16          *******************************************************************************/
+  17          
+  18          #include <stdlib.h>
+  19          #include <string.h>
+  20          #include <stdio.h>
+  21          #include <device.h>
+  22          #include "speedControl.h"
+  23          
+  24          /* GLOBAL VARIABLES */
+  25          double prevTime = 42949.6;  // time of previous sensor interrupt in seconds
+  26          double prevError = 3;       // previous error for integral calculation
+  27          double integralSum = 0;     // discrete sum of integral
+  28          int tickCount = 0;       // track ticks for restarting integral calculation
+  29          // declare and initialize externs
+  30          double GOAL = 3.0;          // initial goal speed prior to slider input
+  31          double speed = 0;           // track current speed
+  32          double Kp = 50;             // constant for P control 
+  33          double Ki = 42;             // constant for I control
+  34          double Kd = 0;              // constant for D control
+  35          
+  36          int dist = 0;
+  37          
+  38          /*---------------------------------------------------------------------------*/
+  39          // start car and speed control initializations
+  40          void speed_Start() {
+  41   1          SensorInterrupt_Start();                // start interrupt handler
+  42   1          SensorInterrupt_SetVector(interSensor); // set up interrupt
+  43   1          SensorTimer_Start();                    // start sensorTimer
+  44   1          MotorPWM_Start();                       // start motorPWM
+  45   1          MotorPWM_WriteCompare(50);              // initial cycle PWM pulse-width
+  46   1      }
+  47          
+  48          /*---------------------------------------------------------------------------*/
+  49          // stop car
+  50          void speed_Stop() {
+  51   1          MotorPWM_Stop();
+  52   1          SensorInterrupt_Stop();
+  53   1          SensorTimer_Stop();
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 2   
+
+  54   1      }
+  55          
+  56          /*---------------------------------------------------------------------------*/
+  57          // sensor interrupt handler
+  58          CY_ISR(interSensor) {
+  59   1          double time = Timer();          // READ from sensorTimer_ReadCapture()
+  60   1          double dT = prevTime - time;    // calculate elapsed time
+  61   1          double error;
+  62   1          uint8 cmp;                      // CMP value for PWM
+  63   1      
+  64   1          speed = Speed(dT);       // speed of car at time of interrupt
+  65   1          error = Error(speed);    // error in speed of car at time of interrupt
+  66   1          
+  67   1          // calculate integral term
+  68   1          IControl(dT, error);
+  69   1          cmp = PIDControl(speed);
+  70   1      
+  71   1          // WRITE new pulse width based on PID after each pulse
+  72   1          MotorPWM_WriteCompare(cmp);
+  73   1          
+  74   1          // update previous time
+  75   1          prevTime = time; 
+  76   1           
+  77   1          // reset integral calculation ~every 4 ft (30.5 ticks = 4ft)
+  78   1          tickCount++;
+  79   1          if (tickCount == 10) {
+  80   2              integralSum = 0;
+  81   2          }
+  82   1          
+  83   1          dist++;
+  84   1          if (dist >= 1600) speed_Stop();
+  85   1      }
+  86          
+  87          /*---------------------------------------------------------------------------*/
+  88          // returns current timer reading in seconds
+  89          double Timer() {
+  90   1          float clkSpeed = 100000.0; // in Hz
+  91   1          float time = (float)SensorTimer_ReadCapture() / clkSpeed;
+  92   1          SensorTimer_ReadStatusRegister();
+  93   1          
+  94   1          return (double)time;
+  95   1      }
+  96          
+  97          // calculate current speed in ft/s
+  98          double Speed(double dT) {
+  99   1          // calculations
+ 100   1          double CIRC = .6544974223;    // circumference of wheel in feet (calculated on paper)
+ 101   1          double DISTANCE = CIRC / 5.0; // distance between each of five magnets
+ 102   1          double speed = DISTANCE / dT; // speed in m/s
+ 103   1          
+ 104   1          return speed;
+ 105   1      }
+ 106          
+ 107          /*---------------------------------------------------------------------------*/
+ 108          // calculate error for goal speed
+ 109          double Error(double speed) {
+ 110   1      //    double GOAL = 3.0;  // GOAL SPEED = 3ft/s
+ 111   1          
+ 112   1          return GOAL - speed;
+ 113   1      }
+ 114          
+ 115          /*---------------------------------------------------------------------------*/
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 3   
+
+ 116          // integration control
+ 117          void IControl(double dT, double error) {
+ 118   1          integralSum += error * dT;
+ 119   1      }
+ 120          
+ 121          /*---------------------------------------------------------------------------*/
+ 122          // derivative control
+ 123          double DControl(double speed) {
+ 124   1          double dD = 0;
+ 125   1          return dD;
+ 126   1      }
+*** WARNING C280 IN LINE 123 OF .\speedControl.c: 'speed': unreferenced local variable
+ 127          
+ 128          /*---------------------------------------------------------------------------*/
+ 129          // PID control method returning CMP value for PWM
+ 130          uint8 PIDControl(double speed) {
+ 131   1          double cmp;             // CMP value for sensorPWM_WriteCompare input param
+ 132   1          double periodPWM = 255; // period of motorPWM component
+ 133   1          double openLoop = 40;   // open loop control constant 
+ 134   1          
+ 135   1          double error = Error(speed);
+ 136   1          
+ 137   1          /* PID control calculation */
+ 138   1          cmp = openLoop + Kp * error + Ki * integralSum; // only contains PI for now
+ 139   1          
+ 140   1          // set bounds for cmp
+ 141   1          if (cmp < 0) cmp = 0;
+ 142   1          else if (cmp > periodPWM) cmp = periodPWM;
+ 143   1          
+ 144   1          // return CMP value for sensorPWM_WriteCompare input param
+ 145   1          return (uint8)cmp;
+ 146   1      }
+ 147          
+ 148          /*---------------------------------------------------------------------------*/
+ 149          /* [] END OF FILE */
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 4   
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION speed_Start (BEGIN)
+                                           ; SOURCE LINE # 40
+                                           ; SOURCE LINE # 41
+0000 120000      E     LCALL   SensorInterrupt_Start
+                                           ; SOURCE LINE # 42
+0003 7E00        R     MOV     R6,#HIGH interSensor
+0005 7F00        R     MOV     R7,#LOW interSensor
+0007 120000      E     LCALL   _SensorInterrupt_SetVector
+                                           ; SOURCE LINE # 43
+000A 120000      E     LCALL   SensorTimer_Start
+                                           ; SOURCE LINE # 44
+000D 120000      E     LCALL   MotorPWM_Start
+                                           ; SOURCE LINE # 45
+0010 7F32              MOV     R7,#032H
+0012 7E00              MOV     R6,#00H
+0014 120000      E     LCALL   _MotorPWM_WriteCompare
+                                           ; SOURCE LINE # 46
+0017 22                RET     
+             ; FUNCTION speed_Start (END)
+
+             ; FUNCTION speed_Stop (BEGIN)
+                                           ; SOURCE LINE # 50
+                                           ; SOURCE LINE # 51
+0000 120000      E     LCALL   MotorPWM_Stop
+                                           ; SOURCE LINE # 52
+0003 120000      E     LCALL   SensorInterrupt_Stop
+                                           ; SOURCE LINE # 53
+0006 120000      E     LCALL   SensorTimer_Stop
+                                           ; SOURCE LINE # 54
+0009 22                RET     
+             ; FUNCTION speed_Stop (END)
+
+             ; FUNCTION interSensor (BEGIN)
+0000 C0E0              PUSH    ACC
+0002 C0F0              PUSH    B
+0004 C083              PUSH    DPH
+0006 C082              PUSH    DPL
+0008 C085              PUSH    DPH1
+000A C084              PUSH    DPL1
+000C C086              PUSH    DPS
+000E 758600            MOV     DPS,#00H
+0011 C000        E     PUSH    ?C?XPAGE1SFR
+0013 750000      E     MOV     ?C?XPAGE1SFR,#?C?XPAGE1RST
+0016 C0D0              PUSH    PSW
+0018 75D000            MOV     PSW,#00H
+001B C000              PUSH    AR0
+001D C001              PUSH    AR1
+001F C002              PUSH    AR2
+0021 C003              PUSH    AR3
+0023 C004              PUSH    AR4
+0025 C005              PUSH    AR5
+0027 C006              PUSH    AR6
+0029 C007              PUSH    AR7
+                                           ; SOURCE LINE # 58
+                                           ; SOURCE LINE # 59
+002B 120000      R     LCALL   Timer
+002E 900000      R     MOV     DPTR,#time
+0031 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 60
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 5   
+
+0034 900000      R     MOV     DPTR,#time
+0037 120000      E     LCALL   ?C?LLDXDATA0
+003A 900000      R     MOV     DPTR,#prevTime
+003D 120000      E     LCALL   ?C?LLDXDATA
+0040 120000      E     LCALL   ?C?FPSUB
+0043 900000      R     MOV     DPTR,#dT
+0046 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 64
+0049 900000      R     MOV     DPTR,#dT
+004C 120000      E     LCALL   ?C?LLDXDATA
+004F 120000      R     LCALL   _Speed
+0052 900000      R     MOV     DPTR,#speed
+0055 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 65
+0058 900000      R     MOV     DPTR,#speed
+005B 120000      E     LCALL   ?C?LLDXDATA
+005E 120000      R     LCALL   _Error
+0061 900000      R     MOV     DPTR,#error
+0064 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 68
+0067 900000      R     MOV     DPTR,#dT
+006A 120000      E     LCALL   ?C?LLDXDATA
+006D C004              PUSH    AR4
+006F C005              PUSH    AR5
+0071 C006              PUSH    AR6
+0073 C007              PUSH    AR7
+0075 900000      R     MOV     DPTR,#error
+0078 120000      E     LCALL   ?C?LLDXDATA
+007B 900000      R     MOV     DPTR,#?_IControl?BYTE+04H
+007E 120000      E     LCALL   ?C?LSTXDATA
+0081 D007              POP     AR7
+0083 D006              POP     AR6
+0085 D005              POP     AR5
+0087 D004              POP     AR4
+0089 120000      R     LCALL   _IControl
+                                           ; SOURCE LINE # 69
+008C 900000      R     MOV     DPTR,#speed
+008F 120000      E     LCALL   ?C?LLDXDATA
+0092 120000      R     LCALL   _PIDControl
+0095 900000      R     MOV     DPTR,#cmp
+0098 EF                MOV     A,R7
+0099 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 72
+009A 900000      R     MOV     DPTR,#cmp
+009D E0                MOVX    A,@DPTR
+009E FF                MOV     R7,A
+009F 7E00              MOV     R6,#00H
+00A1 120000      E     LCALL   _MotorPWM_WriteCompare
+                                           ; SOURCE LINE # 75
+00A4 900000      R     MOV     DPTR,#time
+00A7 120000      E     LCALL   ?C?LLDXDATA
+00AA 900000      R     MOV     DPTR,#prevTime
+00AD 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 78
+00B0 900000      R     MOV     DPTR,#tickCount
+00B3 E4                CLR     A
+00B4 75F001            MOV     B,#01H
+00B7 120000      E     LCALL   ?C?IILDX
+                                           ; SOURCE LINE # 79
+00BA 900000      R     MOV     DPTR,#tickCount
+00BD E0                MOVX    A,@DPTR
+00BE FE                MOV     R6,A
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 6   
+
+00BF A3                INC     DPTR
+00C0 E0                MOVX    A,@DPTR
+00C1 FF                MOV     R7,A
+00C2 EF                MOV     A,R7
+00C3 640A              XRL     A,#0AH
+00C5 4E                ORL     A,R6
+00C6 700E              JNZ     ?C0003
+                                           ; SOURCE LINE # 80
+00C8 7F00              MOV     R7,#00H
+00CA 7E00              MOV     R6,#00H
+00CC 7D00              MOV     R5,#00H
+00CE 7C00              MOV     R4,#00H
+00D0 900000      R     MOV     DPTR,#integralSum
+00D3 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 81
+00D6         ?C0003:
+                                           ; SOURCE LINE # 83
+00D6 900000      R     MOV     DPTR,#dist
+00D9 E4                CLR     A
+00DA 75F001            MOV     B,#01H
+00DD 120000      E     LCALL   ?C?IILDX
+                                           ; SOURCE LINE # 84
+00E0 900000      R     MOV     DPTR,#dist
+00E3 E0                MOVX    A,@DPTR
+00E4 FE                MOV     R6,A
+00E5 A3                INC     DPTR
+00E6 E0                MOVX    A,@DPTR
+00E7 FF                MOV     R7,A
+00E8 C3                CLR     C
+00E9 EF                MOV     A,R7
+00EA 9440              SUBB    A,#040H
+00EC EE                MOV     A,R6
+00ED 6480              XRL     A,#080H
+00EF 9486              SUBB    A,#086H
+00F1 4003              JC      ?C0005
+00F3 120000      R     LCALL   speed_Stop
+                                           ; SOURCE LINE # 85
+00F6         ?C0005:
+00F6 D007              POP     AR7
+00F8 D006              POP     AR6
+00FA D005              POP     AR5
+00FC D004              POP     AR4
+00FE D003              POP     AR3
+0100 D002              POP     AR2
+0102 D001              POP     AR1
+0104 D000              POP     AR0
+0106 D0D0              POP     PSW
+0108 D000        E     POP     ?C?XPAGE1SFR
+010A D086              POP     DPS
+010C D084              POP     DPL1
+010E D085              POP     DPH1
+0110 D082              POP     DPL
+0112 D083              POP     DPH
+0114 D0F0              POP     B
+0116 D0E0              POP     ACC
+0118 32                RETI    
+             ; FUNCTION interSensor (END)
+
+             ; FUNCTION Timer (BEGIN)
+                                           ; SOURCE LINE # 89
+                                           ; SOURCE LINE # 90
+0000 7F00              MOV     R7,#00H
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 7   
+
+0002 7E50              MOV     R6,#050H
+0004 7DC3              MOV     R5,#0C3H
+0006 7C47              MOV     R4,#047H
+0008 900000      R     MOV     DPTR,#clkSpeed
+000B 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 91
+000E 120000      E     LCALL   SensorTimer_ReadCapture
+0011 E4                CLR     A
+0012 120000      E     LCALL   ?C?FCASTL
+0015 900000      R     MOV     DPTR,#clkSpeed
+0018 120000      E     LCALL   ?C?LLDXDATA0
+001B 120000      E     LCALL   ?C?FPDIV
+001E 900000      R     MOV     DPTR,#time
+0021 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 92
+0024 120000      E     LCALL   SensorTimer_ReadStatusRegister
+                                           ; SOURCE LINE # 94
+0027 900000      R     MOV     DPTR,#time
+002A 120000      E     LCALL   ?C?LLDXDATA
+                                           ; SOURCE LINE # 95
+002D         ?C0006:
+002D 22                RET     
+             ; FUNCTION Timer (END)
+
+             ; FUNCTION _Speed (BEGIN)
+                                           ; SOURCE LINE # 98
+0000 900000      R     MOV     DPTR,#dT
+0003 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 100
+0006 7F25              MOV     R7,#025H
+0008 7E8D              MOV     R6,#08DH
+000A 7D27              MOV     R5,#027H
+000C 7C3F              MOV     R4,#03FH
+000E 900000      R     MOV     DPTR,#CIRC
+0011 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 101
+0014 7B00              MOV     R3,#00H
+0016 7A00              MOV     R2,#00H
+0018 79A0              MOV     R1,#0A0H
+001A 7840              MOV     R0,#040H
+001C 900000      R     MOV     DPTR,#CIRC
+001F 120000      E     LCALL   ?C?LLDXDATA
+0022 120000      E     LCALL   ?C?FPDIV
+0025 900000      R     MOV     DPTR,#DISTANCE
+0028 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 102
+002B 900000      R     MOV     DPTR,#dT
+002E 120000      E     LCALL   ?C?LLDXDATA0
+0031 900000      R     MOV     DPTR,#DISTANCE
+0034 120000      E     LCALL   ?C?LLDXDATA
+0037 120000      E     LCALL   ?C?FPDIV
+003A 900000      R     MOV     DPTR,#speed
+003D 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 104
+0040 900000      R     MOV     DPTR,#speed
+0043 120000      E     LCALL   ?C?LLDXDATA
+                                           ; SOURCE LINE # 105
+0046         ?C0007:
+0046 22                RET     
+             ; FUNCTION _Speed (END)
+
+             ; FUNCTION _Error (BEGIN)
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 8   
+
+                                           ; SOURCE LINE # 109
+0000 900000      R     MOV     DPTR,#speed
+0003 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 112
+0006 900000      R     MOV     DPTR,#speed
+0009 120000      E     LCALL   ?C?LLDXDATA0
+000C 900000      R     MOV     DPTR,#GOAL
+000F 120000      E     LCALL   ?C?LLDXDATA
+0012 120000      E     LCALL   ?C?FPSUB
+                                           ; SOURCE LINE # 113
+0015         ?C0008:
+0015 22                RET     
+             ; FUNCTION _Error (END)
+
+             ; FUNCTION _IControl (BEGIN)
+                                           ; SOURCE LINE # 117
+0000 900000      R     MOV     DPTR,#dT
+0003 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 118
+0006 900000      R     MOV     DPTR,#integralSum
+0009 120000      E     LCALL   ?C?LLDXDATA
+000C C004              PUSH    AR4
+000E C005              PUSH    AR5
+0010 C006              PUSH    AR6
+0012 C007              PUSH    AR7
+0014 900000      R     MOV     DPTR,#dT
+0017 120000      E     LCALL   ?C?LLDXDATA
+001A 900000      R     MOV     DPTR,#error
+001D 120000      E     LCALL   ?C?LLDXDATA0
+0020 120000      E     LCALL   ?C?FPMUL
+0023 A804              MOV     R0,AR4
+0025 A905              MOV     R1,AR5
+0027 AA06              MOV     R2,AR6
+0029 AB07              MOV     R3,AR7
+002B D007              POP     AR7
+002D D006              POP     AR6
+002F D005              POP     AR5
+0031 D004              POP     AR4
+0033 120000      E     LCALL   ?C?FPADD
+0036 900000      R     MOV     DPTR,#integralSum
+0039 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 119
+003C 22                RET     
+             ; FUNCTION _IControl (END)
+
+             ; FUNCTION _DControl (BEGIN)
+                                           ; SOURCE LINE # 123
+0000 900000      R     MOV     DPTR,#speed
+0003 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 124
+0006 7F00              MOV     R7,#00H
+0008 7E00              MOV     R6,#00H
+000A 7D00              MOV     R5,#00H
+000C 7C00              MOV     R4,#00H
+000E 900000      R     MOV     DPTR,#dD
+0011 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 125
+0014 900000      R     MOV     DPTR,#dD
+0017 120000      E     LCALL   ?C?LLDXDATA
+                                           ; SOURCE LINE # 126
+001A         ?C0010:
+001A 22                RET     
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 9   
+
+             ; FUNCTION _DControl (END)
+
+             ; FUNCTION _PIDControl (BEGIN)
+                                           ; SOURCE LINE # 130
+0000 900000      R     MOV     DPTR,#speed
+0003 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 132
+0006 7F00              MOV     R7,#00H
+0008 7E00              MOV     R6,#00H
+000A 7D7F              MOV     R5,#07FH
+000C 7C43              MOV     R4,#043H
+000E 900000      R     MOV     DPTR,#periodPWM
+0011 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 133
+0014 7F00              MOV     R7,#00H
+0016 7E00              MOV     R6,#00H
+0018 7D20              MOV     R5,#020H
+001A 7C42              MOV     R4,#042H
+001C 900000      R     MOV     DPTR,#openLoop
+001F 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 135
+0022 900000      R     MOV     DPTR,#speed
+0025 120000      E     LCALL   ?C?LLDXDATA
+0028 120000      R     LCALL   _Error
+002B 900000      R     MOV     DPTR,#error
+002E 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 138
+0031 900000      R     MOV     DPTR,#error
+0034 120000      E     LCALL   ?C?LLDXDATA
+0037 900000      R     MOV     DPTR,#Kp
+003A 120000      E     LCALL   ?C?LLDXDATA0
+003D 120000      E     LCALL   ?C?FPMUL
+0040 900000      R     MOV     DPTR,#openLoop
+0043 120000      E     LCALL   ?C?LLDXDATA0
+0046 120000      E     LCALL   ?C?FPADD
+0049 C004              PUSH    AR4
+004B C005              PUSH    AR5
+004D C006              PUSH    AR6
+004F C007              PUSH    AR7
+0051 900000      R     MOV     DPTR,#integralSum
+0054 120000      E     LCALL   ?C?LLDXDATA
+0057 900000      R     MOV     DPTR,#Ki
+005A 120000      E     LCALL   ?C?LLDXDATA0
+005D 120000      E     LCALL   ?C?FPMUL
+0060 A804              MOV     R0,AR4
+0062 A905              MOV     R1,AR5
+0064 AA06              MOV     R2,AR6
+0066 AB07              MOV     R3,AR7
+0068 D007              POP     AR7
+006A D006              POP     AR6
+006C D005              POP     AR5
+006E D004              POP     AR4
+0070 120000      E     LCALL   ?C?FPADD
+0073 900000      R     MOV     DPTR,#cmp
+0076 120000      E     LCALL   ?C?LSTXDATA
+                                           ; SOURCE LINE # 141
+0079 7F00              MOV     R7,#00H
+007B 7E00              MOV     R6,#00H
+007D 7D00              MOV     R5,#00H
+007F 7C00              MOV     R4,#00H
+0081 900000      R     MOV     DPTR,#cmp
+0084 120000      E     LCALL   ?C?LLDXDATA0
+C51 COMPILER V9.03   SPEEDCONTROL                                                          04/04/2015 13:57:24 PAGE 10  
+
+0087 120000      E     LCALL   ?C?FPCMP3
+008A 5010              JNC     ?C0011
+008C 7F00              MOV     R7,#00H
+008E 7E00              MOV     R6,#00H
+0090 7D00              MOV     R5,#00H
+0092 7C00              MOV     R4,#00H
+0094 900000      R     MOV     DPTR,#cmp
+0097 120000      E     LCALL   ?C?LSTXDATA
+009A 801F              SJMP    ?C0012
+009C         ?C0011:
+                                           ; SOURCE LINE # 142
+009C 900000      R     MOV     DPTR,#periodPWM
+009F 120000      E     LCALL   ?C?LLDXDATA
+00A2 900000      R     MOV     DPTR,#cmp
+00A5 120000      E     LCALL   ?C?LLDXDATA0
+00A8 120000      E     LCALL   ?C?FPCMP3
+00AB 600E              JZ      ?C0012
+00AD 400C              JC      ?C0012
+00AF 900000      R     MOV     DPTR,#periodPWM
+00B2 120000      E     LCALL   ?C?LLDXDATA
+00B5 900000      R     MOV     DPTR,#cmp
+00B8 120000      E     LCALL   ?C?LSTXDATA
+00BB         ?C0012:
+                                           ; SOURCE LINE # 145
+00BB 900000      R     MOV     DPTR,#cmp
+00BE 120000      E     LCALL   ?C?LLDXDATA
+00C1 120000      E     LCALL   ?C?CASTF
+                                           ; SOURCE LINE # 146
+00C4         ?C0014:
+00C4 22                RET     
+             ; FUNCTION _PIDControl (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    739    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     36      77
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)

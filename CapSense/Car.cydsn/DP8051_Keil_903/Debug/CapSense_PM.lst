@@ -1,0 +1,462 @@
+C51 COMPILER V9.03   CAPSENSE_PM                                                           04/04/2015 14:09:09 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE CAPSENSE_PM
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\CapSense_PM.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\Gene
+                    -rated_Source\PSoC3\CapSense_PM.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\CapSense_PM.lst) CD DB NOIP OT(
+                    -0) INCDIR(Generated_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\CapSense_PM.obj)
+
+line level    source
+
+   1          /*******************************************************************************
+   2          * File Name: CapSense_PM.c
+   3          * Version 3.20
+   4          *
+   5          * Description:
+   6          *  This file provides Sleep APIs for CapSense CSD Component.
+   7          *
+   8          * Note:
+   9          *
+  10          ********************************************************************************
+  11          * Copyright 2008-2012, Cypress Semiconductor Corporation.  All rights reserved.
+  12          * You may use this file only in accordance with the license, terms, conditions, 
+  13          * disclaimers, and limitations in the end user license agreement accompanying 
+  14          * the software package with which this file was provided.
+  15          *******************************************************************************/
+  16          
+  17          #include "CapSense.h"
+  18          
+  19          CapSense_BACKUP_STRUCT CapSense_backup =
+  20          {   
+  21              0x00u, /* enableState; */
+  22              /* Set ScanSpeed */
+  23              #if (CY_PSOC5A)
+                      CapSense_SCANSPEED_VALUE,  /* scan speed value */
+                  #endif  /* (CY_PSOC5A) */
+  26          };
+  27          
+  28          
+  29          /*******************************************************************************
+  30          * Function Name: CapSense_SaveConfig
+  31          ********************************************************************************
+  32          *
+  33          * Summary:
+  34          *  Saves customer configuration of CapSense none-retention registers. Resets 
+  35          *  all sensors to an inactive state.
+  36          *
+  37          * Parameters:
+  38          *  None
+  39          *
+  40          * Return:
+  41          *  None
+  42          *
+  43          * Global Variables:
+  44          *  CapSense_backup - used to save component state before enter sleep 
+  45          *  mode and none-retention registers.
+  46          *
+  47          * Reentrant:
+  48          *  No - for PSoC5 ES1 silicon, Yes - for PSoC3 ES3.
+  49          *
+  50          *******************************************************************************/
+  51          void CapSense_SaveConfig(void) 
+  52          {    
+  53   1          /* Set ScanSpeed */
+C51 COMPILER V9.03   CAPSENSE_PM                                                           04/04/2015 14:09:09 PAGE 2   
+
+  54   1          #if (CY_PSOC5A)
+                      CapSense_backup.scanspeed = CapSense_SCANSPEED_PERIOD_REG;
+                  #endif  /* (CY_PSOC5A) */
+  57   1      
+  58   1          /* Set CONTROL_REG */
+  59   1          CapSense_backup.ctrlreg = CapSense_CONTROL_REG;
+  60   1      
+  61   1          /* Clear all sensors */
+  62   1          CapSense_ClearSensors();
+  63   1          
+  64   1          /* The pins disable is customer concern: Cmod and Rb */
+  65   1      }
+  66          
+  67          
+  68          /*******************************************************************************
+  69          * Function Name: CapSense_Sleep
+  70          ********************************************************************************
+  71          *
+  72          * Summary:
+  73          *  Disables Active mode power template bits for number of component used within 
+  74          *  CapSense. Calls CapSense_SaveConfig() function to save customer 
+  75          *  configuration of CapSense none-retention registers and resets all sensors 
+  76          *  to an inactive state.
+  77          *
+  78          * Parameters:
+  79          *  None
+  80          *
+  81          * Return:
+  82          *  None
+  83          *
+  84          * Global Variables:
+  85          *  CapSense_backup - used to save component state before enter sleep 
+  86          *  mode and none-retention registers.
+  87          *
+  88          * Reentrant:
+  89          *  No
+  90          *
+  91          *******************************************************************************/
+  92          void CapSense_Sleep(void) 
+  93          {
+  94   1          /* Check and save enable state */
+  95   1          if(CapSense_IS_CAPSENSE_ENABLE(CapSense_CONTROL_REG))
+  96   1          {
+  97   2              CapSense_backup.enableState = 1u;
+  98   2              CapSense_Stop();
+  99   2          }
+ 100   1          else
+ 101   1          {
+ 102   2              CapSense_backup.enableState = 0u;
+ 103   2          }
+ 104   1          
+ 105   1          CapSense_SaveConfig();
+ 106   1      }
+ 107          
+ 108          
+ 109          /*******************************************************************************
+ 110          * Function Name: CapSense_RestoreConfig
+ 111          ********************************************************************************
+ 112          *
+ 113          * Summary:
+ 114          *  Restores CapSense configuration and non-retention register values.
+ 115          *
+C51 COMPILER V9.03   CAPSENSE_PM                                                           04/04/2015 14:09:09 PAGE 3   
+
+ 116          * Parameters:
+ 117          *  None
+ 118          *
+ 119          * Return:
+ 120          *  None
+ 121          *
+ 122          * Side Effects:
+ 123          *  Must be called only after CapSense_SaveConfig() routine. Otherwise 
+ 124          *  the component configuration will be overwritten with its initial setting.  
+ 125          *
+ 126          * Global Variables:
+ 127          *  CapSense_backup - used to save component state before enter sleep 
+ 128          *  mode and none-retention registers.
+ 129          *
+ 130          *******************************************************************************/
+ 131          void CapSense_RestoreConfig(void) 
+ 132          {   
+ 133   1          #if ( ((CapSense_PRS_OPTIONS) || \
+ 134   1                 (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_UDB) || \
+ 135   1                 ( (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) && \
+ 136   1                   (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_UDB))) && \
+ 137   1                (CY_PSOC5A) )
+                      
+                      uint8 enableInterrupts;
+                  #endif /* ( ((CapSense_PRS_OPTIONS) || \
+                         *     (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_UDB) || \
+                         *   ( (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) && \
+                         *     (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_UDB))) && \
+                         *     (CY_PSOC5A) )
+                         */
+ 146   1          
+ 147   1          /* Set PRS */
+ 148   1          #if (CapSense_PRS_OPTIONS == CapSense_PRS_8BITS)
+ 149   1              #if (CY_PSOC5A)
+                          /* Aux control set FIFO as REG */ 
+                          enableInterrupts = CyEnterCriticalSection();
+                          CapSense_AUX_CONTROL_A_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+                          CyExitCriticalSection(enableInterrupts);
+                          
+                          /* Write polynomial */
+                          CapSense_POLYNOM_REG   = CapSense_PRS8_DEFAULT_POLYNOM;             /* D0 register */
+                      #endif  /* (CY_PSOC5A) */
+ 158   1              
+ 159   1              /* Write FIFO with seed */
+ 160   1              CapSense_SEED_COPY_REG = CapSense_MEASURE_FULL_RANGE_LOW;               /* F0 register */
+ 161   1          
+ 162   1          #elif (CapSense_PRS_OPTIONS == CapSense_PRS_16BITS)
+                      #if (CY_PSOC5A)
+                          /* Aux control set FIFO as REG */
+                          enableInterrupts = CyEnterCriticalSection();
+                          CapSense_AUX_CONTROL_A_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+                          CapSense_AUX_CONTROL_B_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+                          CyExitCriticalSection(enableInterrupts);
+                          
+                          /* Write polynomial */
+                          CY_SET_REG16(CapSense_POLYNOM_PTR, CapSense_PRS16_DEFAULT_POLYNOM); /* D0 register */
+                      #endif  /* (CY_PSOC5A) */
+                      
+                      /* Write FIFO with seed */
+                      CY_SET_REG16(CapSense_SEED_COPY_PTR, CapSense_MEASURE_FULL_RANGE);      /* F0 register */
+                              
+                  #elif (CapSense_PRS_OPTIONS == CapSense_PRS_16BITS_4X)
+C51 COMPILER V9.03   CAPSENSE_PM                                                           04/04/2015 14:09:09 PAGE 4   
+
+                      #if (CY_PSOC5A)
+                          /* Aux control set FIFO as REG */
+                          enableInterrupts = CyEnterCriticalSection();
+                          CapSense_AUX_CONTROL_A_REG  |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+                          CyExitCriticalSection(enableInterrupts);
+                          
+                          /* Write polynomial */
+                          CapSense_POLYNOM_A__D1_REG   = HI8(CapSense_PRS16_DEFAULT_POLYNOM); /* D0 register */
+                          CapSense_POLYNOM_A__D0_REG   = LO8(CapSense_PRS16_DEFAULT_POLYNOM); /* D1 register */
+                      #endif  /* (CY_PSOC5A) */
+                      
+                      /* Write FIFO with seed */
+                      CapSense_SEED_COPY_A__F1_REG = CapSense_MEASURE_FULL_RANGE_LOW;         /* F0 register */
+                      CapSense_SEED_COPY_A__F0_REG =CapSense_MEASURE_FULL_RANGE_LOW;          /* F1 register */
+                      
+                  #else
+                      /* Do nothing = config without PRS */
+                  #endif  /* (CapSense_PRS_OPTIONS == CapSense_PRS_8BITS) */
+ 196   1          
+ 197   1          #if (CY_PSOC5A)
+                      /* Set ScanSpeed */
+                      CapSense_SCANSPEED_PERIOD_REG = CapSense_backup.scanspeed;       /* Counter7_PERIOD register */
+                  #endif  /* (CY_PSOC5A) */
+ 201   1          
+ 202   1          /* Set the Measure */
+ 203   1          #if (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                      /* Window PWM  - FF Timer register are retention */
+                      /* Raw Counter - FF Timer register are retention */
+                  #else
+ 207   1              /* Window PWM and Raw Counter AUX and D0 set */ 
+ 208   1              #if (CY_PSOC5A)
+                          enableInterrupts = CyEnterCriticalSection();
+                          CapSense_PWM_CH0_AUX_CONTROL_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;   /* AUX register */
+                          CapSense_RAW_CH0_AUX_CONTROL_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;   /* AUX register */
+                          CyExitCriticalSection(enableInterrupts);
+                          
+                          CapSense_PWM_CH0_ADD_VALUE_REG    = CapSense_MEASURE_FULL_RANGE_LOW;    /* D0 register */
+                          CapSense_RAW_CH0_ADD_VALUE_REG    = CapSense_MEASURE_FULL_RANGE_LOW;    /* D0 register */
+                          
+                      #endif  /* (CY_PSOC5A) */
+ 218   1              
+ 219   1              /* Window PWM */
+ 220   1              CapSense_PWM_CH0_PERIOD_LO_REG    = CapSense_MEASURE_FULL_RANGE_LOW;        /* F0 register */
+ 221   1              
+ 222   1              /* Raw Counter */
+ 223   1              CapSense_RAW_CH0_PERIOD_HI_REG    = CapSense_MEASURE_FULL_RANGE_LOW;        /* F1 register */
+ 224   1              CapSense_RAW_CH0_PERIOD_LO_REG    = CapSense_MEASURE_FULL_RANGE_LOW;        /* F0 register */
+ 225   1          
+ 226   1          #endif  /* (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF) */ 
+ 227   1          
+ 228   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                      #if (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                          /* Window PWM  - FF Timer register are retention */
+                          /* Raw Counter - FF Timer register are retention */
+                      #else
+                          /* Window PWM and Raw Counter AUX and D0 set */ 
+                          #if (CY_PSOC5A)
+                              enableInterrupts = CyEnterCriticalSection();
+                              CapSense_PWM_CH1_AUX_CONTROL_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG; /* AUX register */
+                              CapSense_RAW_CH1_AUX_CONTROL_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG; /* AUX register */
+                              CyExitCriticalSection(enableInterrupts);
+                              
+C51 COMPILER V9.03   CAPSENSE_PM                                                           04/04/2015 14:09:09 PAGE 5   
+
+                              CapSense_RAW_CH1_ADD_VALUE_REG    = CapSense_MEASURE_FULL_RANGE_LOW;   /* D0 register */
+                              CapSense_PWM_CH1_ADD_VALUE_REG    = CapSense_MEASURE_FULL_RANGE_LOW;   /* D0 register */
+                          #endif  /* (CY_PSOC5A) */
+                          
+                          /* Window PWM */
+                          CapSense_PWM_CH1_PERIOD_LO_REG    = CapSense_MEASURE_FULL_RANGE_LOW;       /* F0 register */
+                          
+                          /* Raw Counter */
+                          CapSense_RAW_CH1_PERIOD_HI_REG    = CapSense_MEASURE_FULL_RANGE_LOW;       /* F1 register */
+                          CapSense_RAW_CH1_PERIOD_LO_REG    = CapSense_MEASURE_FULL_RANGE_LOW;       /* F0 register */
+                          
+                      #endif  /* (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF) */
+                  
+                  #endif  /* (CapSense_DESIGN_TYPE == TWO_CHANNELS_DESIGN)*/
+ 254   1      
+ 255   1          /* Set CONTROL_REG */
+ 256   1          CapSense_CONTROL_REG = CapSense_backup.ctrlreg;
+ 257   1      
+ 258   1          /* Enable window generation */
+ 259   1          CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH0;
+ 260   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) 
+                      CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH1; 
+                  #endif  /* CapSense_DESIGN_TYPE */
+ 263   1       
+ 264   1          /* The pins enable are customer concern: Cmod and Rb */
+ 265   1       }
+ 266           
+ 267          
+ 268          /*******************************************************************************
+ 269          * Function Name: CapSense_Wakeup
+ 270          ********************************************************************************
+ 271          *
+ 272          * Summary:
+ 273          *  Restores CapSense configuration and non-retention register values. 
+ 274          *  Restores enabled state of component by setting Active mode power template 
+ 275          *  bits for number of component used within CapSense.
+ 276          *
+ 277          * Parameters:
+ 278          *  None
+ 279          *
+ 280          * Return:
+ 281          *  None
+ 282          *
+ 283          * Global Variables:
+ 284          *  CapSense_backup - used to save component state before enter sleep 
+ 285          *  mode and none-retention registers.
+ 286          *
+ 287          *******************************************************************************/
+ 288          void CapSense_Wakeup(void) 
+ 289          {
+ 290   1          CapSense_RestoreConfig();
+ 291   1          
+ 292   1          /* Restore CapSense Enable state */
+ 293   1          if (CapSense_backup.enableState != 0u)
+ 294   1          {
+ 295   2              CapSense_Enable();
+ 296   2          }
+ 297   1      }
+ 298          
+ 299          
+ 300          /* [] END OF FILE */
+C51 COMPILER V9.03   CAPSENSE_PM                                                           04/04/2015 14:09:09 PAGE 6   
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION CapSense_SaveConfig (BEGIN)
+                                           ; SOURCE LINE # 51
+                                           ; SOURCE LINE # 52
+                                           ; SOURCE LINE # 59
+0000 906477            MOV     DPTR,#06477H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 900000      R     MOV     DPTR,#CapSense_backup+01H
+0008 EF                MOV     A,R7
+0009 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 62
+000A 120000      E     LCALL   CapSense_ClearSensors
+                                           ; SOURCE LINE # 65
+000D         ?C0001:
+000D 22                RET     
+             ; FUNCTION CapSense_SaveConfig (END)
+
+             ; FUNCTION CapSense_Sleep (BEGIN)
+                                           ; SOURCE LINE # 92
+                                           ; SOURCE LINE # 93
+                                           ; SOURCE LINE # 95
+0000 906477            MOV     DPTR,#06477H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 5480              ANL     A,#080H
+0008 FF                MOV     R7,A
+0009 7E00              MOV     R6,#00H
+000B EF                MOV     A,R7
+000C 4E                ORL     A,R6
+000D 600B              JZ      ?C0002
+                                           ; SOURCE LINE # 96
+                                           ; SOURCE LINE # 97
+000F 900000      R     MOV     DPTR,#CapSense_backup
+0012 7401              MOV     A,#01H
+0014 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 98
+0015 120000      E     LCALL   CapSense_Stop
+                                           ; SOURCE LINE # 99
+0018 8005              SJMP    ?C0003
+001A         ?C0002:
+                                           ; SOURCE LINE # 101
+                                           ; SOURCE LINE # 102
+001A 900000      R     MOV     DPTR,#CapSense_backup
+001D E4                CLR     A
+001E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 103
+001F         ?C0003:
+                                           ; SOURCE LINE # 105
+001F 120000      R     LCALL   CapSense_SaveConfig
+                                           ; SOURCE LINE # 106
+0022         ?C0004:
+0022 22                RET     
+             ; FUNCTION CapSense_Sleep (END)
+
+             ; FUNCTION CapSense_RestoreConfig (BEGIN)
+                                           ; SOURCE LINE # 131
+                                           ; SOURCE LINE # 132
+                                           ; SOURCE LINE # 160
+C51 COMPILER V9.03   CAPSENSE_PM                                                           04/04/2015 14:09:09 PAGE 7   
+
+0000 906546            MOV     DPTR,#06546H
+0003 74FF              MOV     A,#0FFH
+0005 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 220
+0006 906547            MOV     DPTR,#06547H
+0009 74FF              MOV     A,#0FFH
+000B F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 223
+000C 906554            MOV     DPTR,#06554H
+000F 74FF              MOV     A,#0FFH
+0011 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 224
+0012 906544            MOV     DPTR,#06544H
+0015 74FF              MOV     A,#0FFH
+0017 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 256
+0018 900000      R     MOV     DPTR,#CapSense_backup+01H
+001B E0                MOVX    A,@DPTR
+001C FF                MOV     R7,A
+001D 906477            MOV     DPTR,#06477H
+0020 EF                MOV     A,R7
+0021 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 259
+0022 906477            MOV     DPTR,#06477H
+0025 E0                MOVX    A,@DPTR
+0026 FF                MOV     R7,A
+0027 EF                MOV     A,R7
+0028 4404              ORL     A,#04H
+002A FF                MOV     R7,A
+002B EF                MOV     A,R7
+002C F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 265
+002D         ?C0005:
+002D 22                RET     
+             ; FUNCTION CapSense_RestoreConfig (END)
+
+             ; FUNCTION CapSense_Wakeup (BEGIN)
+                                           ; SOURCE LINE # 288
+                                           ; SOURCE LINE # 289
+                                           ; SOURCE LINE # 290
+0000 120000      R     LCALL   CapSense_RestoreConfig
+                                           ; SOURCE LINE # 293
+0003 900000      R     MOV     DPTR,#CapSense_backup
+0006 E0                MOVX    A,@DPTR
+0007 FF                MOV     R7,A
+0008 EF                MOV     A,R7
+0009 6003              JZ      ?C0007
+                                           ; SOURCE LINE # 294
+                                           ; SOURCE LINE # 295
+000B 120000      E     LCALL   CapSense_Enable
+                                           ; SOURCE LINE # 296
+000E         ?C0006:
+                                           ; SOURCE LINE # 297
+000E         ?C0007:
+000E 22                RET     
+             ; FUNCTION CapSense_Wakeup (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    110    ----
+   CONSTANT SIZE    =   ----    ----
+C51 COMPILER V9.03   CAPSENSE_PM                                                           04/04/2015 14:09:09 PAGE 8   
+
+   XDATA SIZE       =      2    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

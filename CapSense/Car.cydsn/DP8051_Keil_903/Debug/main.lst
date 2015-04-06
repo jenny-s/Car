@@ -1,0 +1,115 @@
+C51 COMPILER V9.03   MAIN                                                                  04/04/2015 14:04:20 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\main.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\main
+                    -.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\main.lst) CD DB NOIP OT(0) INCDIR(Generated_Source\PSoC3) OJ(
+                    -.\DP8051_Keil_903\Debug\main.obj)
+
+line level    source
+
+   1          /******************************************************************************
+   2          * File Name: Main.c
+   3          * Version 2.1 (with capsense and buttons)
+   4          *
+   5          * Authors: Jenny & Allie
+   6          *
+   7          * Description:
+   8          * Left switch (P6_1) turns car "on" and right switch (P15_5) turns car "off".
+   9          * CapSense slider changes speed at any time, with a range of 3ft/s to 6ft/s.
+  10          * Speed is regulated with PI feedback control
+  11          *
+  12          * Dependencies: device.h, userInterface.h, speedControl.h
+  13          * 
+  14          * Code Tested with: 
+  15          * PSoC Creator: PSoC Creator 2.1
+  16          * Device tested with: CY8C3866AXI-040 
+  17          * Compiler: DP8051 Keil 8.16
+  18          *******************************************************************************/
+  19          
+  20          #include <device.h>
+  21          #include "userInterface.h"
+  22          #include "speedControl.h"
+  23          #include "navigation.h"
+  24          
+  25          /*---------------------------------------------------------------------------*/
+  26          void main()
+  27          {
+  28   1          CYGlobalIntEnable; 
+  29   1          // start LCD
+  30   1          LCD_Start();
+  31   1          // start CapSense
+  32   1          sense_Start();
+  33   1          // start buttons
+  34   1          button_Start();
+  35   1      
+  36   1      
+  37   1          for(;;)
+  38   1          {
+  39   2              lcd__updates();
+  40   2              
+  41   2              sense_updates();
+  42   2          }    
+  43   1      }
+  44          
+  45          /*---------------------------------------------------------------------------*/
+  46          /* [] END OF FILE */
+  47          
+C51 COMPILER V9.03   MAIN                                                                  04/04/2015 14:04:20 PAGE 2   
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION main (BEGIN)
+                                           ; SOURCE LINE # 26
+                                           ; SOURCE LINE # 27
+                                           ; SOURCE LINE # 28
+0000 D2AF              SETB    EA
+0002 9044F4            MOV     DPTR,#044F4H
+0005 E0                MOVX    A,@DPTR
+0006 FF                MOV     R7,A
+0007 EF                MOV     A,R7
+0008 54FD              ANL     A,#0FDH
+000A FF                MOV     R7,A
+000B EF                MOV     A,R7
+000C F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 30
+000D 120000      E     LCALL   LCD_Start
+                                           ; SOURCE LINE # 32
+0010 120000      E     LCALL   sense_Start
+                                           ; SOURCE LINE # 34
+0013 120000      E     LCALL   button_Start
+                                           ; SOURCE LINE # 37
+0016         ?C0001:
+                                           ; SOURCE LINE # 38
+                                           ; SOURCE LINE # 39
+0016 120000      E     LCALL   lcd__updates
+                                           ; SOURCE LINE # 41
+0019 120000      E     LCALL   sense_updates
+                                           ; SOURCE LINE # 42
+001C 80F8              SJMP    ?C0001
+001E         ?C0002:
+                                           ; SOURCE LINE # 43
+001E         ?C0003:
+001E 22                RET     
+             ; FUNCTION main (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     31    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

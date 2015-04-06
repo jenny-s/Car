@@ -1,0 +1,3365 @@
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE CAPSENSE
+OBJECT MODULE PLACED IN .\DP8051_Keil_903\Debug\CapSense.obj
+COMPILER INVOKED BY: C:\Program Files\Cypress\PSoC Creator\2.1\PSoC Creator\import\keil\pk51\9.03\C51\BIN\c51.exe .\Gene
+                    -rated_Source\PSoC3\CapSense.c NOIV LARGE MODDP2 OMF2 VB(1) PR(.\DP8051_Keil_903\Debug\CapSense.lst) CD DB NOIP OT(0) INC
+                    -DIR(Generated_Source\PSoC3) OJ(.\DP8051_Keil_903\Debug\CapSense.obj)
+
+line level    source
+
+   1          /*******************************************************************************
+   2          * File Name: CapSense.c
+   3          * Version 3.20
+   4          *
+   5          * Description:
+   6          *  This file provides the source code of scanning APIs for the CapSense CSD 
+   7          *  component.
+   8          *
+   9          * Note:
+  10          *
+  11          ********************************************************************************
+  12          * Copyright 2008-2012, Cypress Semiconductor Corporation.  All rights reserved.
+  13          * You may use this file only in accordance with the license, terms, conditions,
+  14          * disclaimers, and limitations in the end user license agreement accompanying
+  15          * the software package with which this file was provided.
+  16          *******************************************************************************/
+  17          
+  18          #include "CapSense.h"
+  19          
+  20          /* Rb init function */
+  21          #if (CapSense_CURRENT_SOURCE == CapSense_EXTERNAL_RB)
+                  void CapSense_InitRb(void);
+              #endif /* End CapSense_CURRENT_SOURCE */ 
+  24          
+  25          #if (CapSense_IS_COMPLEX_SCANSLOTS)
+                  void CapSense_EnableScanSlot(uint8 slot) ;
+                  void CapSense_DisableScanSlot(uint8 slot) ;
+                  
+              #else
+  30              #define CapSense_EnableScanSlot(slot)   CapSense_EnableSensor(slot)
+  31              #define CapSense_DisableScanSlot(slot)  CapSense_DisableSensor(slot)
+  32          
+  33          #endif  /* End CapSense_IS_COMPLEX_SCANSLOTS */
+  34          
+  35          /* Helper functions - do nto part of public interface*/
+  36          
+  37          /* Find next sensor for One Channel design */
+  38          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+  39              uint8 CapSense_FindNextSensor(uint8 snsIndex) CYREENTRANT;
+  40          #endif  /* End CapSense_DESIGN_TYPE */
+  41          
+  42          /* Find next pair for Two Channels design */
+  43           #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                  uint8 CapSense_FindNextPair(uint8 snsIndex) ;
+              #endif  /* End CapSense_DESIGN_TYPE */
+  46          
+  47          /* Start and Compete the scan */
+  48          void CapSense_PreScan(uint8 sensor) CYREENTRANT;
+  49          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+  50              void CapSense_PostScan(uint8 sensor);
+  51          #else
+                  void CapSense_PostScanCh0(uint8 sensor) ;
+                  void CapSense_PostScanCh1(uint8 sensor) ;
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 2   
+
+              #endif  /* End CapSense_DESIGN_TYPE */
+  55          
+  56          #if (CapSense_PRESCALER_OPTIONS)
+  57              void CapSense_SetPrescaler(uint8 prescaler) CYREENTRANT;
+  58          #endif  /* End CapSense_PRESCALER_OPTIONS */
+  59          
+  60          void CapSense_SetScanSpeed(uint8 scanspeed) ;
+  61          
+  62          /* SmartSense functions */
+  63          #if (CapSense_TUNING_METHOD == CapSense_AUTO_TUNING)
+                  uint8 CapSense_lowLevelTuningDone = 0u;
+                  extern void CapSense_AutoTune(void) ;
+              #endif /* End (CapSense_TUNING_METHOD == CapSense_AUTO_TUNING) */
+  67          
+  68          uint8 CapSense_initVar = 0u;
+  69                      
+  70          /* Global software variables */
+  71          volatile uint8 CapSense_csv = 0u;            /* CapSense CSD status, control variable */
+  72          volatile uint8 CapSense_sensorIndex = 0u;    /* Index of scannig sensor */
+  73          
+  74          #if (CapSense_CURRENT_SOURCE == CapSense_EXTERNAL_RB)
+                  uint8  CapSense_RbCh0_cur = CapSense_RBLEED1;
+                  #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                      uint8  CapSense_RbCh1_cur = (CapSense_RBLEED1 + CapSense_TOTAL_RB_NUMBER__CH0);
+                  #endif /* (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)*/ 
+              #else
+  80              #if (CY_PSOC5A)
+                      uint8 CapSense_idac_cfg_restore = 0u;
+                      uint8 CapSense_idac_ch0_cr0reg = 0u;
+                      #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                          uint8 CapSense_idac_ch1_cr0reg = 0u;
+                      #endif /* (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) */ 
+                  #endif /* (CY_PSOC5A) */
+  87          #endif /* (CapSense_CURRENT_SOURCE == CapSense_EXTERNAL_RB) */ 
+  88                  
+  89          /* Global array of Raw Counts */
+  90          uint16 CapSense_SensorRaw[CapSense_TOTAL_SENSOR_COUNT] = {0u};
+  91          
+  92          uint8 CapSense_SensorEnableMask[(((CapSense_TOTAL_SENSOR_COUNT - 1u) / 8u) + 1u)] = {
+  93          0x7Fu, };
+  94          
+  95          uint8 CYXDATA * const CYCODE CapSense_pcTable[] = {
+  96              (uint8 CYXDATA *)CapSense_PortCH0__Button0__BTN__PC, 
+  97              (uint8 CYXDATA *)CapSense_PortCH0__Button1__BTN__PC, 
+  98              (uint8 CYXDATA *)CapSense_PortCH0__LinearSlider0_e0__LS__PC, 
+  99              (uint8 CYXDATA *)CapSense_PortCH0__LinearSlider0_e1__LS__PC, 
+ 100              (uint8 CYXDATA *)CapSense_PortCH0__LinearSlider0_e2__LS__PC, 
+ 101              (uint8 CYXDATA *)CapSense_PortCH0__LinearSlider0_e3__LS__PC, 
+ 102              (uint8 CYXDATA *)CapSense_PortCH0__LinearSlider0_e4__LS__PC, 
+ 103          };
+ 104          
+ 105          const uint8 CYCODE CapSense_portTable[] = {
+ 106              CapSense_PortCH0__Button0__BTN__PORT, 
+ 107              CapSense_PortCH0__Button1__BTN__PORT, 
+ 108              CapSense_PortCH0__LinearSlider0_e0__LS__PORT, 
+ 109              CapSense_PortCH0__LinearSlider0_e1__LS__PORT, 
+ 110              CapSense_PortCH0__LinearSlider0_e2__LS__PORT, 
+ 111              CapSense_PortCH0__LinearSlider0_e3__LS__PORT, 
+ 112              CapSense_PortCH0__LinearSlider0_e4__LS__PORT, 
+ 113          };
+ 114          
+ 115          const uint8 CYCODE CapSense_maskTable[] = {
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 3   
+
+ 116              CapSense_PortCH0__Button0__BTN__MASK,
+ 117              CapSense_PortCH0__Button1__BTN__MASK,
+ 118              CapSense_PortCH0__LinearSlider0_e0__LS__MASK,
+ 119              CapSense_PortCH0__LinearSlider0_e1__LS__MASK,
+ 120              CapSense_PortCH0__LinearSlider0_e2__LS__MASK,
+ 121              CapSense_PortCH0__LinearSlider0_e3__LS__MASK,
+ 122              CapSense_PortCH0__LinearSlider0_e4__LS__MASK,
+ 123          };
+ 124          
+ 125          uint8 CYXDATA * const CYCODE CapSense_csTable[] = {
+ 126              (uint8 CYXDATA *)CYREG_PRT0_CAPS_SEL, (uint8 CYXDATA *)CYREG_PRT1_CAPS_SEL, (uint8 CYXDATA *)CYREG_PRT
+             -2_CAPS_SEL,
+ 127              (uint8 CYXDATA *)CYREG_PRT3_CAPS_SEL, (uint8 CYXDATA *)CYREG_PRT4_CAPS_SEL, (uint8 CYXDATA *)CYREG_PRT
+             -5_CAPS_SEL,
+ 128              (uint8 CYXDATA *)CYREG_PRT6_CAPS_SEL, (uint8 CYXDATA *)CYREG_PRT15_CAPS_SEL,
+ 129          };
+ 130          
+ 131          uint8 CapSense_idacSettings[] = {
+ 132              55u,55u,35u,35u,35u,35u,35u,
+ 133          };
+ 134          
+ 135          uint8 CapSense_widgetResolution[] = {
+ 136              CapSense_PWM_RESOLUTION_8_BITS,
+ 137              CapSense_PWM_RESOLUTION_8_BITS,
+ 138              CapSense_PWM_RESOLUTION_8_BITS,
+ 139          };
+ 140          
+ 141          uint8 CapSense_AnalogSwitchDivider = 2u;
+ 142          
+ 143          const uint8 CYCODE CapSense_widgetNumber[] = {
+ 144              1u, /* Button0__BTN */
+ 145              2u, /* Button1__BTN */
+ 146              0u, 0u, 0u, 0u, 0u, /* LinearSlider0__LS */
+ 147              
+ 148          };
+ 149          
+ 150          
+ 151          
+ 152          
+ 153          /*******************************************************************************
+ 154          * Function Name: CapSense_Init
+ 155          ********************************************************************************
+ 156          *
+ 157          * Summary:
+ 158          *  Inits default CapSense configuration provided with customizer that defines 
+ 159          *  mode of component operations and resets all sensors to an inactive state.
+ 160          *
+ 161          * Parameters:
+ 162          *  None
+ 163          *
+ 164          * Return:
+ 165          *  None
+ 166          *
+ 167          *******************************************************************************/
+ 168          void CapSense_Init(void) 
+ 169          {
+ 170   1          #if ( (CapSense_PRS_OPTIONS) || \
+ 171   1                (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_UDB) || \
+ 172   1                ( (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) && \
+ 173   1                  (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_UDB)) )
+ 174   1              
+ 175   1              uint8 enableInterrupts;
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 4   
+
+ 176   1          #endif /* ( (CapSense_PRS_OPTIONS) || \
+ 177   1                 * (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_UDB) || \
+ 178   1                 * ( (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) && \
+ 179   1                 * (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_UDB)) ) 
+ 180   1                 */
+ 181   1          
+ 182   1          /* Clear all sensors */
+ 183   1          CapSense_ClearSensors();
+ 184   1      
+ 185   1          /* Set Prescaler */
+ 186   1          #if (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB)
+ 187   1              /* Do nothing = config without prescaler */
+ 188   1          #elif (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_FF)
+                      CapSense_PRESCALER_CONTROL_REG   = (CapSense_PRESCALER_CTRL_ENABLE |
+                                                                  CapSense_PRESCALER_CTRL_MODE_CMP);
+                                                             
+                      CapSense_PRESCALER_CONTROL2_REG |= CapSense_PRESCALER_CTRL_CMP_LESS_EQ;
+                  #else
+                      /* Do nothing = config without prescaler */
+                  #endif  /* (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB) */
+ 196   1      
+ 197   1          /* Set PRS */
+ 198   1          #if (CapSense_PRS_OPTIONS)
+ 199   1              CapSense_SetAnalogSwitchesSource(CapSense_ANALOG_SWITCHES_SRC_PRS);
+ 200   1          #endif /* (CapSense_PRS_OPTIONS) */
+ 201   1      
+ 202   1          #if (CapSense_PRS_OPTIONS == CapSense_PRS_8BITS)
+ 203   1              /* Aux control set FIFO as REG */
+ 204   1              enableInterrupts = CyEnterCriticalSection();
+ 205   1              CapSense_AUX_CONTROL_A_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+ 206   1              CyExitCriticalSection(enableInterrupts);
+ 207   1              
+ 208   1              /* Write polynomial */
+ 209   1              CapSense_POLYNOM_REG   = CapSense_PRS8_DEFAULT_POLYNOM;
+ 210   1              /* Write FIFO with seed */
+ 211   1              CapSense_SEED_COPY_REG = CapSense_MEASURE_FULL_RANGE_LOW;
+ 212   1              
+ 213   1          #elif (CapSense_PRS_OPTIONS == CapSense_PRS_16BITS)
+                      /* Aux control set FIFO as REG */ 
+                      enableInterrupts = CyEnterCriticalSection();  
+                      CapSense_AUX_CONTROL_A_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+                      CapSense_AUX_CONTROL_B_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+                      CyExitCriticalSection(enableInterrupts);
+                      
+                      /* Write polynomial */
+                      CY_SET_REG16(CapSense_POLYNOM_PTR, CapSense_PRS16_DEFAULT_POLYNOM);
+                      /* Write FIFO with seed */
+                      CY_SET_REG16(CapSense_SEED_COPY_PTR, CapSense_MEASURE_FULL_RANGE);
+                              
+                  #elif (CapSense_PRS_OPTIONS == CapSense_PRS_16BITS_4X)
+                      /* Aux control set FIFO as REG */
+                      enableInterrupts = CyEnterCriticalSection();
+                      CapSense_AUX_CONTROL_A_REG  |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+                      CyExitCriticalSection(enableInterrupts);
+                      
+                      /* Write polynomial */
+                      CapSense_POLYNOM_A__D1_REG   = HI8(CapSense_PRS16_DEFAULT_POLYNOM);
+                      CapSense_POLYNOM_A__D0_REG   = LO8(CapSense_PRS16_DEFAULT_POLYNOM);
+                      /* Write FIFO with seed */
+                      CapSense_SEED_COPY_A__F1_REG = CapSense_MEASURE_FULL_RANGE_LOW;
+                      CapSense_SEED_COPY_A__F0_REG = CapSense_MEASURE_FULL_RANGE_LOW; 
+                      
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 5   
+
+                  #else
+                      /* Do nothing = config without PRS */
+                  #endif  /* (CapSense_PRS_OPTIONS == CapSense_PRS_8BITS) */ 
+ 241   1          
+ 242   1          /* Set ScanSpeed */
+ 243   1          CapSense_SCANSPEED_PERIOD_REG = CapSense_SCANSPEED_VALUE;
+ 244   1          
+ 245   1          /* Set the Measure */
+ 246   1          #if (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                      /* Window PWM */
+                      CapSense_PWM_CH0_CONTROL_REG      = CapSense_MEASURE_CTRL_ENABLE;
+                      CapSense_PWM_CH0_CONTROL2_REG    |= CapSense_MEASURE_CTRL_PULSEWIDTH;
+                      CY_SET_REG16(CapSense_PWM_CH0_COUNTER_PTR, CapSense_MEASURE_FULL_RANGE);
+                      
+                      /* Raw Counter */
+                      CapSense_RAW_CH0_CONTROL_REG      = CapSense_MEASURE_CTRL_ENABLE;
+                      CapSense_RAW_CH0_CONTROL2_REG    |= CapSense_MEASURE_CTRL_PULSEWIDTH;
+                      CY_SET_REG16(CapSense_RAW_CH0_PERIOD_PTR, CapSense_MEASURE_FULL_RANGE);
+                  
+                  #else
+ 258   1              /*Window PWM and Raw Counter AUX set */
+ 259   1              enableInterrupts = CyEnterCriticalSection();
+ 260   1              CapSense_PWM_CH0_AUX_CONTROL_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+ 261   1              CapSense_RAW_CH0_AUX_CONTROL_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+ 262   1              CyExitCriticalSection(enableInterrupts);
+ 263   1              
+ 264   1              /* Window PWM */
+ 265   1              CapSense_PWM_CH0_ADD_VALUE_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+ 266   1              CapSense_PWM_CH0_PERIOD_LO_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+ 267   1              CapSense_PWM_CH0_COUNTER_LO_REG   = CapSense_MEASURE_FULL_RANGE_LOW;
+ 268   1              
+ 269   1              /* Raw Counter */
+ 270   1              CapSense_RAW_CH0_ADD_VALUE_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+ 271   1              CapSense_RAW_CH0_PERIOD_HI_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+ 272   1              CapSense_RAW_CH0_PERIOD_LO_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+ 273   1              
+ 274   1          #endif  /* (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF) */ 
+ 275   1          
+ 276   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                      #if (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                          /* Window PWM */
+                          CapSense_PWM_CH1_CONTROL_REG      = CapSense_MEASURE_CTRL_ENABLE;
+                          CapSense_PWM_CH1_CONTROL2_REG    |= CapSense_MEASURE_CTRL_PULSEWIDTH;
+                          CY_SET_REG16(CapSense_PWM_CH1_COUNTER_PTR, CapSense_MEASURE_FULL_RANGE);
+                          
+                          /* Raw Counter */
+                          CapSense_RAW_CH1_CONTROL_REG      = CapSense_MEASURE_CTRL_ENABLE;
+                          CapSense_RAW_CH1_CONTROL2_REG    |= CapSense_MEASURE_CTRL_PULSEWIDTH;
+                          CY_SET_REG16(CapSense_RAW_CH1_PERIOD_PTR, CapSense_MEASURE_FULL_RANGE);
+                         
+                      #else
+                          /*Window PWM and Raw Counter AUX set */
+                          enableInterrupts = CyEnterCriticalSection();
+                          CapSense_PWM_CH1_AUX_CONTROL_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+                          CapSense_RAW_CH1_AUX_CONTROL_REG |= CapSense_AUXCTRL_FIFO_SINGLE_REG;
+                          CyExitCriticalSection(enableInterrupts);
+                          
+                          /* Window PWM */
+                          CapSense_PWM_CH1_ADD_VALUE_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+                          CapSense_PWM_CH1_PERIOD_LO_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+                          CapSense_PWM_CH1_COUNTER_LO_REG   = CapSense_MEASURE_FULL_RANGE_LOW;
+                          
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 6   
+
+                          /* Raw Counter */
+                          
+                          CapSense_RAW_CH1_ADD_VALUE_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+                          CapSense_RAW_CH1_PERIOD_HI_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+                          CapSense_RAW_CH1_PERIOD_LO_REG    = CapSense_MEASURE_FULL_RANGE_LOW;
+                          
+                      #endif  /* (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF) */
+                  
+                  #endif  /* (CapSense_DESIGN_TYPE == TWO_CHANNELS_DESIGN) */
+ 309   1          
+ 310   1          /* Setup ISR */
+ 311   1          CyIntDisable(CapSense_IsrCH0_ISR_NUMBER);
+ 312   1          CyIntSetVector(CapSense_IsrCH0_ISR_NUMBER, CapSense_IsrCH0_ISR);
+ 313   1          CyIntSetPriority(CapSense_IsrCH0_ISR_NUMBER, CapSense_IsrCH0_ISR_PRIORITY);
+ 314   1          
+ 315   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                      CyIntDisable(CapSense_IsrCH1_ISR_NUMBER);
+                      CyIntSetVector(CapSense_IsrCH1_ISR_NUMBER, CapSense_IsrCH1_ISR);
+                      CyIntSetPriority(CapSense_IsrCH1_ISR_NUMBER, CapSense_IsrCH1_ISR_PRIORITY);
+                  #endif  /* CapSense_DESIGN_TYPE */
+ 320   1          
+ 321   1          /* Setup AMux Bus: Connect Cmod, Cmp, Idac */
+ 322   1          CapSense_AMuxCH0_Init();
+ 323   1          CapSense_AMuxCH0_Connect(CapSense_AMuxCH0_CMOD_CHANNEL);
+ 324   1          CapSense_AMuxCH0_Connect(CapSense_AMuxCH0_CMP_VP_CHANNEL);
+ 325   1          #if (CapSense_CURRENT_SOURCE)
+ 326   1              CapSense_AMuxCH0_Connect(CapSense_AMuxCH0_IDAC_CHANNEL);
+ 327   1          #endif  /* CapSense_CURRENT_SOURCE */
+ 328   1          
+ 329   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) 
+                      CapSense_AMuxCH1_Init();
+                      CapSense_AMuxCH1_Connect(CapSense_AMuxCH1_CMOD_CHANNEL);
+                      CapSense_AMuxCH1_Connect(CapSense_AMuxCH1_CMP_VP_CHANNEL);
+                      #if (CapSense_CURRENT_SOURCE)
+                          CapSense_AMuxCH1_Connect(CapSense_AMuxCH1_IDAC_CHANNEL);
+                      #endif  /* CapSense_CURRENT_SOURCE */
+                  #endif  /* CapSense_DESIGN_TYPE */
+ 337   1          
+ 338   1          /* Int Rb */
+ 339   1          #if (CapSense_CURRENT_SOURCE == CapSense_EXTERNAL_RB)
+                      CapSense_InitRb();
+                  #endif /* (CapSense_CURRENT_SOURCE == CapSense_EXTERNAL_RB) */
+ 342   1          
+ 343   1          /* Enable window generation */
+ 344   1          CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH0;
+ 345   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                      CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH1;
+                  #endif  /* CapSense_DESIGN_TYPE */
+ 348   1          
+ 349   1          /* Initialize Cmp and Idac */
+ 350   1          CapSense_CompCH0_Init();
+ 351   1          #if (CapSense_CURRENT_SOURCE)
+ 352   1              CapSense_IdacCH0_Init();
+ 353   1              CapSense_IdacCH0_SetPolarity(CapSense_IdacCH0_IDIR);
+ 354   1              CapSense_IdacCH0_SetRange(CapSense_IDAC_RANGE_VALUE);
+ 355   1              CapSense_IdacCH0_SetValue(CapSense_TURN_OFF_IDAC);
+ 356   1          #endif  /* CapSense_CURRENT_SOURCE */
+ 357   1          
+ 358   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) 
+                      CapSense_CompCH1_Init();
+                      #if (CapSense_CURRENT_SOURCE)
+                          CapSense_IdacCH1_Init();
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 7   
+
+                          CapSense_IdacCH1_SetPolarity(CapSense_IdacCH1_IDIR);
+                          CapSense_IdacCH1_SetRange(CapSense_IDAC_RANGE_VALUE);
+                          CapSense_IdacCH1_SetValue(CapSense_TURN_OFF_IDAC);
+                      #endif  /* CapSense_CURRENT_SOURCE */
+                  #endif  /* CapSense_DESIGN_TYPE */
+ 367   1          
+ 368   1          /* Initialize Vref if as VDAC */
+ 369   1          #if (CapSense_VREF_OPTIONS == CapSense_VREF_VDAC)
+                      CapSense_VdacRefCH0_Init();
+                      #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                          CapSense_VdacRefCH1_Init();
+                      #endif  /* CapSense_DESIGN_TYPE */
+                  #endif  /* CapSense_VREF_OPTIONS */
+ 375   1      }
+ 376          
+ 377          
+ 378          /*******************************************************************************
+ 379          * Function Name: CapSense_Enable
+ 380          ********************************************************************************
+ 381          *
+ 382          * Summary:
+ 383          *  Enables active mode power template bits for number of component used within 
+ 384          *  CapSense.
+ 385          *
+ 386          * Parameters:
+ 387          *  None
+ 388          *
+ 389          * Return:
+ 390          *  None
+ 391          *
+ 392          *******************************************************************************/
+ 393          void CapSense_Enable(void) 
+ 394          {
+ 395   1          uint8 enableInterrupts;
+ 396   1          
+ 397   1          enableInterrupts = CyEnterCriticalSection();
+ 398   1          
+ 399   1          /* Enable Prescaler */
+ 400   1          #if (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB)
+ 401   1              /* Do nothing  for UDB */
+ 402   1          #elif (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_FF)
+                      CapSense_PRESCALER_ACT_PWRMGR_REG  |= CapSense_PRESCALER_ACT_PWR_EN;
+                      CapSense_PRESCALER_STBY_PWRMGR_REG |= CapSense_PRESCALER_STBY_PWR_EN;
+                      
+                  #else
+                      /* Do nothing = config without prescaler */
+                  #endif  /* (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB) */
+ 409   1          
+ 410   1          /* Enable ScanSpeed */
+ 411   1          CapSense_SCANSPEED_AUX_CONTROL_REG |= CapSense_SCANSPEED_CTRL_ENABLE;
+ 412   1          
+ 413   1          /* Enable Measure CH0 */
+ 414   1          #if (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                      /* Window PWM */
+                      CapSense_PWM_CH0_ACT_PWRMGR_REG  |= CapSense_PWM_CH0_ACT_PWR_EN;
+                      CapSense_PWM_CH0_STBY_PWRMGR_REG |= CapSense_PWM_CH0_STBY_PWR_EN;
+                      
+                      /* Raw Counter */
+                      CapSense_RAW_CH0_ACT_PWRMGR_REG  |= CapSense_RAW_CH0_ACT_PWR_EN;
+                      CapSense_RAW_CH0_STBY_PWRMGR_REG |= CapSense_RAW_CH0_STBY_PWR_EN;
+                      
+                  #else
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 8   
+
+ 424   1              /* Window PWM -  Do nothing */
+ 425   1              /* Raw Counter - Do nothing */
+ 426   1              
+ 427   1          #endif  /* (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF) */ 
+ 428   1          
+ 429   1          /* Enable Measure CH1*/
+ 430   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                      #if (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                          /* Window PWM */
+                          CapSense_PWM_CH1_ACT_PWRMGR_REG  |= CapSense_PWM_CH1_ACT_PWR_EN;
+                          CapSense_PWM_CH1_STBY_PWRMGR_REG |= CapSense_PWM_CH1_STBY_PWR_EN;
+                          
+                          /* Raw Counter */
+                          CapSense_RAW_CH1_ACT_PWRMGR_REG  |= CapSense_RAW_CH1_ACT_PWR_EN;
+                          CapSense_RAW_CH1_STBY_PWRMGR_REG |= CapSense_RAW_CH1_STBY_PWR_EN;
+                         
+                      #else
+                      /* Window PWM -  Do nothing */
+                      /* Raw Counter - Do nothing */
+                      
+                      #endif  /* (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF) */
+                  
+                  #endif  /* (CapSense_DESIGN_TYPE == TWO_CHANNELS_DESIGN)*/
+ 447   1          
+ 448   1          /* Enable the Clock */
+ 449   1          #if (CapSense_CLOCK_SOURCE == CapSense_INTERNAL_CLOCK)
+ 450   1             CapSense_IntClock_Enable();
+ 451   1          #endif  /* CapSense_CLOCK_SOURCE */
+ 452   1          
+ 453   1          /* Setup Cmp and Idac */
+ 454   1          CapSense_CompCH0_Enable();
+ 455   1          #if (CapSense_CURRENT_SOURCE)
+ 456   1              CapSense_IdacCH0_Enable();
+ 457   1          #endif  /* CapSense_CURRENT_SOURCE */
+ 458   1          
+ 459   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) 
+                      CapSense_CompCH1_Enable();
+                      #if (CapSense_CURRENT_SOURCE)
+                          CapSense_IdacCH1_Enable();
+                      #endif  /* CapSense_CURRENT_SOURCE */
+                  #endif  /* CapSense_DESIGN_TYPE */
+ 465   1          
+ 466   1          /* Enable Vref */
+ 467   1          #if (CapSense_VREF_OPTIONS == CapSense_VREF_VDAC)
+                      CapSense_VdacRefCH0_Enable();
+                      CapSense_VdacRefCH0_SetValue(CapSense_VdacRefCH0_DEFAULT_DATA);
+                      #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                          CapSense_VdacRefCH1_Enable();
+                          CapSense_VdacRefCH1_SetValue(CapSense_VdacRefCH1_DEFAULT_DATA);
+                      #endif  /* (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) */
+                  #else
+ 475   1              /* Enable CapSense Buf */
+ 476   1              CapSense_BufCH0_STBY_PWRMGR_REG |= CapSense_BufCH0_STBY_PWR_EN;
+ 477   1              CapSense_BufCH0_ACT_PWRMGR_REG  |= CapSense_BufCH0_ACT_PWR_EN;
+ 478   1              
+ 479   1              #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                          CapSense_BufCH1_STBY_PWRMGR_REG |= CapSense_BufCH1_STBY_PWR_EN;
+                          CapSense_BufCH1_ACT_PWRMGR_REG  |= CapSense_BufCH1_ACT_PWR_EN;
+                      #endif  /* (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) */
+ 483   1          #endif  /* (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS) */
+ 484   1          
+ 485   1          /* Set reference on AMux Bus */
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 9   
+
+ 486   1          #if (CapSense_VREF_OPTIONS == CapSense_VREF_VDAC)
+                      /* Connect Vdac to AMux Bus */
+                      CapSense_AMuxCH0_Connect(CapSense_AMuxCH0_VREF_CHANNEL);
+                      #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                          CapSense_AMuxCH1_Connect(CapSense_AMuxCH1_VREF_CHANNEL);
+                      #endif  /* (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) */
+                      
+                  #else
+ 494   1              /* Enable CapSense Buf */
+ 495   1              CapSense_BufCH0_CAPS_CFG0_REG |= CapSense_CSBUF_ENABLE;
+ 496   1              
+ 497   1              #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                          CapSense_BufCH1_CAPS_CFG0_REG |= CapSense_CSBUF_ENABLE;
+                      #endif  /* (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) */
+ 500   1          #endif  /* (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS)*/
+ 501   1          
+ 502   1          CyExitCriticalSection(enableInterrupts);
+ 503   1          
+ 504   1          /* Enable interrupt */
+ 505   1          CyIntEnable(CapSense_IsrCH0_ISR_NUMBER);
+ 506   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) 
+                      CyIntEnable(CapSense_IsrCH1_ISR_NUMBER);
+                  #endif  /* CapSense_DESIGN_TYPE */
+ 509   1          
+ 510   1          /* Set CapSense Enable state */
+ 511   1          CapSense_CONTROL_REG |= CapSense_CTRL_CAPSENSE_EN;
+ 512   1      }
+ 513          
+ 514          
+ 515          /*******************************************************************************
+ 516          * Function Name: CapSense_Start
+ 517          ********************************************************************************
+ 518          *
+ 519          * Summary:
+ 520          *  Initializes registers and starts the CSD method of CapSense component. Reset 
+ 521          *  all sensors to an inactive state. Enables interrupts for sensors scanning.
+ 522          *  When Auto Tuning (SmartSense) mode is selected the tuning procedure is 
+ 523          *  applied for all sensors.
+ 524          *
+ 525          * Parameters:
+ 526          *  None
+ 527          *
+ 528          * Return:
+ 529          *  None
+ 530          *
+ 531          * Global Variables:
+ 532          *  CapSense_initVar - used to check initial configuration, modified on 
+ 533          *  first function call.
+ 534          *  CapSense_lowLevelTuningDone - used to notify the Tuner GUI that 
+ 535          *  tuning of scanning parameters are done.
+ 536          *
+ 537          * Reentrant:
+ 538          *  No
+ 539          *
+ 540          *******************************************************************************/
+ 541          void CapSense_Start(void)  
+ 542          {
+ 543   1          if (CapSense_initVar == 0u)
+ 544   1          {
+ 545   2              CapSense_Init();
+ 546   2              CapSense_initVar = 1u;
+ 547   2          }
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 10  
+
+ 548   1          CapSense_Enable();
+ 549   1          
+ 550   1          /* AutoTunning start */
+ 551   1          #if (CapSense_TUNING_METHOD == CapSense_AUTO_TUNING)
+                      /* AutoTune by sensor or pair of sensor basis */
+                      CapSense_AutoTune();
+                      CapSense_lowLevelTuningDone = 1u;
+                  #endif /* (CapSense_TUNING_METHOD == CapSense_AUTO_TUNING) */
+ 556   1      }
+ 557          
+ 558          
+ 559          /*******************************************************************************
+ 560          * Function Name: CapSense_Stop
+ 561          ********************************************************************************
+ 562          *
+ 563          * Summary:
+ 564          *  Stops the sensors scanner, disables internal interrupts, and resets all 
+ 565          *  sensors to an inactive state. Disables Active mode power template bits for 
+ 566          *  number of component used within CapSense.
+ 567          *
+ 568          * Parameters:
+ 569          *  None
+ 570          *
+ 571          * Return:
+ 572          *  None
+ 573          *
+ 574          * Side Effects:
+ 575          *  This function should be called after scans will be completed.
+ 576          *
+ 577          *******************************************************************************/
+ 578          void CapSense_Stop(void) 
+ 579          {
+ 580   1          /* Stop Capsensing */
+ 581   1          CapSense_CONTROL_REG &= ~CapSense_CTRL_START;
+ 582   1          
+ 583   1          /* Disable interrupt */
+ 584   1          CyIntDisable(CapSense_IsrCH0_ISR_NUMBER);
+ 585   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) 
+                      CyIntDisable(CapSense_IsrCH1_ISR_NUMBER);
+                  #endif  /* CapSense_DESIGN_TYPE */
+ 588   1          
+ 589   1          /* Clear all sensors */
+ 590   1          CapSense_ClearSensors();
+ 591   1          
+ 592   1          /* Disable Prescaler */
+ 593   1          #if (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB)
+ 594   1              /* Do nothing  for UDB */
+ 595   1          #elif (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_FF)        
+                      CapSense_PRESCALER_ACT_PWRMGR_REG  &= ~CapSense_PRESCALER_ACT_PWR_EN;
+                      CapSense_PRESCALER_STBY_PWRMGR_REG &= ~CapSense_PRESCALER_STBY_PWR_EN;
+                      
+                  #else
+                      /* Do nothing = config without prescaler */
+                  #endif  /* (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB) */
+ 602   1          
+ 603   1          /* Disable ScanSpeed */
+ 604   1          CapSense_SCANSPEED_AUX_CONTROL_REG &= ~CapSense_SCANSPEED_CTRL_ENABLE;
+ 605   1          
+ 606   1          /* Disable Measure CH0 */
+ 607   1          #if (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                      /* Window PWM */
+                      CapSense_PWM_CH0_ACT_PWRMGR_REG  &= ~CapSense_PWM_CH0_ACT_PWR_EN;
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 11  
+
+                      CapSense_PWM_CH0_STBY_PWRMGR_REG &= ~CapSense_PWM_CH0_STBY_PWR_EN;
+              
+                      /* Raw Counter */
+                      CapSense_RAW_CH0_ACT_PWRMGR_REG  &= ~CapSense_RAW_CH0_ACT_PWR_EN;
+                      CapSense_RAW_CH0_STBY_PWRMGR_REG &= ~CapSense_RAW_CH0_STBY_PWR_EN;
+              
+                  #else
+ 617   1              /* Window PWM -  Do nothing */
+ 618   1              /* Raw Counter - Do nothing */
+ 619   1              
+ 620   1          #endif  /* (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF) */ 
+ 621   1          
+ 622   1          /* Disable Measure CH1 */
+ 623   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                      #if (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                          /* Window PWM */
+                          CapSense_PWM_CH1_ACT_PWRMGR_REG  &= ~CapSense_PWM_CH1_ACT_PWR_EN;
+                          CapSense_PWM_CH1_STBY_PWRMGR_REG &= ~CapSense_PWM_CH1_STBY_PWR_EN;
+                  
+                          /* Raw Counter */
+                          CapSense_RAW_CH1_ACT_PWRMGR_REG  &= ~CapSense_RAW_CH1_ACT_PWR_EN;
+                          CapSense_RAW_CH1_STBY_PWRMGR_REG &= ~CapSense_RAW_CH1_STBY_PWR_EN;
+                         
+                      #else
+                      /* Window PWM -  Do nothing */
+                      /* Raw Counter - Do nothing */
+                      
+                      #endif  /* (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF) */
+                  
+                  #endif  /* (CapSense_DESIGN_TYPE == TWO_CHANNELS_DESIGN)*/
+ 640   1          
+ 641   1          /* Disable the Clock */
+ 642   1          #if (CapSense_CLOCK_SOURCE == CapSense_INTERNAL_CLOCK)
+ 643   1             CapSense_IntClock_Stop();
+ 644   1          #endif  /* CapSense_CLOCK_SOURCE */
+ 645   1          
+ 646   1          /* Disable power from Cmp and Idac */
+ 647   1          CapSense_CompCH0_Stop();
+ 648   1          #if (CapSense_CURRENT_SOURCE)
+ 649   1              CapSense_IdacCH0_Stop();
+ 650   1          #endif  /* CapSense_CURRENT_SOURCE */
+ 651   1          
+ 652   1          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) 
+                      CapSense_CompCH1_Stop();
+                      #if (CapSense_CURRENT_SOURCE)
+                          CapSense_IdacCH1_Stop();
+                      #endif  /* CapSense_CURRENT_SOURCE */
+                  #endif  /* CapSense_DESIGN_TYPE */    
+ 658   1          
+ 659   1          /* Disable Vref if as VDAC */
+ 660   1          #if (CapSense_VREF_OPTIONS == CapSense_VREF_VDAC)
+                      CapSense_VdacRefCH0_Stop();
+                      #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                          CapSense_VdacRefCH1_Stop();
+                      #endif  /* CapSense_DESIGN_TYPE */
+                  #endif  /* CapSense_VREF_OPTIONS */
+ 666   1      
+ 667   1          #if (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS)
+                      /* The Idac turn off before */
+                  #else
+ 670   1              /* Enable CapSense Buf */
+ 671   1              CapSense_BufCH0_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 12  
+
+ 672   1              CapSense_BufCH0_ACT_PWRMGR_REG &= ~CapSense_BufCH0_ACT_PWR_EN;
+ 673   1              CapSense_BufCH0_STBY_PWRMGR_REG &= ~CapSense_BufCH0_STBY_PWR_EN;
+ 674   1              
+ 675   1              #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                          CapSense_BufCH1_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+                          CapSense_BufCH1_ACT_PWRMGR_REG &= ~CapSense_BufCH1_ACT_PWR_EN;
+                          CapSense_BufCH1_STBY_PWRMGR_REG &= ~CapSense_BufCH1_STBY_PWR_EN;
+                      #endif  /*(CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) */
+ 680   1          #endif  /* (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS) */
+ 681   1          
+ 682   1          /* Set CapSense Disable state */
+ 683   1          CapSense_CONTROL_REG &= ~CapSense_CTRL_CAPSENSE_EN;
+ 684   1      }
+ 685          
+ 686          
+ 687          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+ 688              /*******************************************************************************
+ 689              * Function Name: CapSense_FindNextSensor
+ 690              ********************************************************************************
+ 691              *
+ 692              * Summary:
+ 693              *  Finds next sensor to scan. 
+ 694              *
+ 695              * Parameters:
+ 696              *  snsIndex:  Current index of sensor.
+ 697              *
+ 698              * Return:
+ 699              *  Returns the next sensor index to scan.
+ 700              *
+ 701              * Global Variables:
+ 702              *  CapSense_SensorEnableMask[ ] - used to store bit masks of enabled 
+ 703              *  sensors.
+ 704              *  CapSense_SensorEnableMask[0] contains the masked bits for sensors 0
+ 705              *  through 7 (sensor 0 is bit 0, sensor 1 is bit 1).
+ 706              *  CapSense_SensorEnableMask[1] contains the masked bits for sensors 
+ 707              *  8 through 15 (if needed), and so on.
+ 708              *    0 - sensor doesn't scan by CapSense_ScanEnabledWidgets().
+ 709              *    1 - sensor scans by CapSense_ScanEnabledWidgets().
+ 710              *
+ 711              * Note: 
+ 712              *  This function has effect on current scanning scanning and should not
+ 713              *  be used outisde of component.
+ 714              *
+ 715              *******************************************************************************/
+ 716              uint8 CapSense_FindNextSensor(uint8 snsIndex) CYREENTRANT
+ 717              {
+ 718   1              uint8 pos;
+ 719   1              uint8 enMask;
+ 720   1              
+ 721   1              /* Check if sensor enabled */
+ 722   1              do
+ 723   1              {
+ 724   2                  /* Proceed with the next sensor */
+ 725   2                  snsIndex++;
+ 726   2                  if(snsIndex == CapSense_TOTAL_SENSOR_COUNT)
+ 727   2                  {
+ 728   3                      break;
+ 729   3                  }
+ 730   2                  pos = (snsIndex >> 3u);
+ 731   2                  enMask = 0x01u << (snsIndex & 0x07u);
+ 732   2              }    
+ 733   1              while((CapSense_SensorEnableMask[pos] & enMask) == 0u);
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 13  
+
+ 734   1              
+ 735   1              return snsIndex;
+ 736   1          }
+ 737           #endif  /* CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN */
+ 738           
+ 739           
+ 740          #if (CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN)
+                  /*******************************************************************************
+                  * Function Name: CapSense_FindNextPair
+                  ********************************************************************************
+                  *
+                  * Summary:
+                  *  Finds next pair or sensor to scan. Sets condition bits to skip scanning.
+                  *  
+                  * Parameters:
+                  *  snsIndex:  Current index pair of sensors.
+                  *
+                  * Return:
+                  *  Returns the next pair of sensors index to scan.
+                  *
+                  * Global Variables:
+                  *  CapSense_SensorEnableMask[ ] - used to store bit masks of enabled 
+                  *  sensors.
+                  *  CapSense_SensorEnableMask[0] contains the masked bits for sensors 0
+                  *  through 7 (sensor 0 is bit 0, sensor 1 is bit 1).
+                  *  CapSense_SensorEnableMask[1] contains the masked bits for sensors 
+                  *  8 through 15 (if needed), and so on.
+                  *    0 - sensor doesn't scan by CapSense_ScanEnabledWidgets().
+                  *    1 - sensor scans by CapSense_ScanEnabledWidgets().
+                  *
+                  * Note: 
+                  *  This function has effect on control signals set for scanning and should not
+                  *  be used outisde of component.
+                  *
+                  *******************************************************************************/
+                  uint8 CapSense_FindNextPair(uint8 snsIndex) 
+                  {
+                      uint8 posCh;
+                      uint8 enMaskCh;
+                      uint8 indexCh0 = snsIndex;
+                      uint8 indexCh1 = snsIndex + CapSense_TOTAL_SENSOR_COUNT__CH0;
+                      
+                      /* Find enabled sensor on channel 0 */
+                      do
+                      {
+                          /* Procced the scanning */
+                          indexCh0++;
+                          if (indexCh0 >= CapSense_TOTAL_SENSOR_COUNT__CH0)
+                          {
+                              /* Lets hadle now all from CH1 */
+                              indexCh0 = CapSense_END_OF_SCAN__CH0;
+                              break;
+                          }
+                          
+                          posCh = (indexCh0 >> 3u);
+                          enMaskCh = 0x01u << (indexCh0 & 0x07u);
+                      }
+                      while((CapSense_SensorEnableMask[posCh] & enMaskCh) == 0u);
+                      
+                      /* Find enabled sensor on channel 1 */
+                      do
+                      {
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 14  
+
+                          /* Procced the scanning */
+                          indexCh1++;        
+                          if (indexCh1 >= CapSense_TOTAL_SENSOR_COUNT)
+                          {
+                              /* Lets hadle now all from CH0 */
+                              indexCh1 = CapSense_END_OF_SCAN__CH1;
+                              break;
+                          }
+                          
+                          posCh = (indexCh1 >> 3u);
+                          enMaskCh = 0x01u << (indexCh1 & 0x07u);
+                      } 
+                      while((CapSense_SensorEnableMask[posCh] & enMaskCh) == 0u);
+                      
+                      indexCh1 -= CapSense_TOTAL_SENSOR_COUNT__CH0;
+                      
+                      /* Find the pair to scan */
+                      if(indexCh0 == indexCh1)
+                      {
+                          /* Scans TWO Channels */
+                          snsIndex = indexCh0;
+                          
+                          CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH0;
+                          CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH1;
+                      }
+                      else if(indexCh0 < indexCh1)
+                      {
+                         /* Scans Channel ONE only */
+                         snsIndex = indexCh0;
+                         
+                         CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH0;
+                         CapSense_CONTROL_REG &= ~CapSense_CTRL_WINDOW_EN__CH1;
+                      }
+                      else
+                      {
+                          /* Scans Channel TWO only */
+                          snsIndex = indexCh1;
+                          
+                          CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH1;
+                          CapSense_CONTROL_REG &= ~CapSense_CTRL_WINDOW_EN__CH0;
+                      }
+                      
+                      return snsIndex;
+                  }
+              #endif  /* CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN */
+ 841          
+ 842          
+ 843          /*******************************************************************************
+ 844          * Function Name: CapSense_SetScanSlotSettings
+ 845          ********************************************************************************
+ 846          *
+ 847          * Summary:
+ 848          *  Sets the scan settings of the selected scan slot (sensor or pair of sensors). 
+ 849          *  The scan settings incorporate IDAC value (for IDAC configurations) for every 
+ 850          *  sensor and resolution. The resolution is the same for all sensors within 
+ 851          *  widget.
+ 852          *
+ 853          * Parameters:
+ 854          *  slot:  Scan slot number (sensor or pair of sensors).
+ 855          *
+ 856          * Return:
+ 857          *  None
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 15  
+
+ 858          *
+ 859          * Global Variables:
+ 860          *  CapSense_idacSettings[] - used to store idac value for every sensor.
+ 861          *  CapSense_widgetResolution[] - used to store scan resolution of every 
+ 862          *  widget.
+ 863          *
+ 864          *******************************************************************************/
+ 865          void CapSense_SetScanSlotSettings(uint8 slot) CYREENTRANT
+ 866          {
+ 867   1          uint8 widget;
+ 868   1          
+ 869   1          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+ 870   1              /* Define widget sensor belongs to */
+ 871   1              widget = CapSense_widgetNumber[slot];
+ 872   1              
+ 873   1              /* Set Idac Value */
+ 874   1              #if (CapSense_CURRENT_SOURCE)
+ 875   1                  CapSense_IdacCH0_SetValue(CapSense_idacSettings[slot]);
+ 876   1              #endif  /* CapSense_CURRENT_SOURCE */
+ 877   1              
+ 878   1              /* Window PWM */
+ 879   1              #if (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                          CY_SET_REG16(CapSense_PWM_CH0_PERIOD_PTR,
+                              ((uint16) CapSense_widgetResolution[widget] << 8u) | CapSense_MEASURE_FULL_RANGE_LOW);
+                      #else
+ 883   1                  CapSense_PWM_CH0_PERIOD_HI_REG = CapSense_widgetResolution[widget];
+ 884   1              #endif  /* (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF) */ 
+ 885   1      
+ 886   1              #if ( (CapSense_MULTIPLE_PRESCALER_ENABLED) || \
+ 887   1                    (CapSense_TUNING_METHOD == CapSense_AUTO_TUNING) )
+                          CapSense_SetPrescaler(CapSense_AnalogSwitchDivider[slot]);
+                      #elif (CapSense_PRESCALER_OPTIONS)
+ 890   1                  CapSense_SetPrescaler(CapSense_AnalogSwitchDivider);
+ 891   1              #endif /* ((CapSense_MULTIPLE_PRESCALER_ENABLED) || \
+ 892   1                     *   (CapSense_TUNING_METHOD == CapSense_AUTO_TUNING))
+ 893   1                     */
+ 894   1      
+ 895   1          #else
+                      if(slot < CapSense_TOTAL_SENSOR_COUNT__CH0)
+                      {
+                          /* Define widget sensor belongs to */
+                          widget = CapSense_widgetNumber[slot];
+                          
+                          /* Set Idac Value */
+                          #if (CapSense_CURRENT_SOURCE)
+                              CapSense_IdacCH0_SetValue(CapSense_idacSettings[slot]);
+                          #endif  /* CapSense_CURRENT_SOURCE */
+                          
+                          /* Set Pwm Resolution */
+                          #if (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                              CY_SET_REG16(CapSense_PWM_CH0_PERIOD_PTR,
+                                ((uint16) CapSense_widgetResolution[widget] << 8u) | CapSense_MEASURE_FULL_RANGE_LOW);
+                          #else
+                              CapSense_PWM_CH0_PERIOD_HI_REG = CapSense_widgetResolution[widget];
+                          #endif  /* (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)*/ 
+                      }
+                      
+                      if(slot < CapSense_TOTAL_SENSOR_COUNT__CH1)
+                      {
+                          widget = CapSense_widgetNumber[slot+CapSense_TOTAL_SENSOR_COUNT__CH0];
+                      
+                          /* Set Idac Value */
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 16  
+
+                          #if (CapSense_CURRENT_SOURCE)
+                              CapSense_IdacCH1_SetValue(CapSense_idacSettings[slot+
+                                                                                           CapSense_TOTAL_SENSOR_COUNT__
+             -CH0]);
+                          #endif  /* CapSense_CURRENT_SOURCE */
+                          
+                          /* Set Pwm Resolution */
+                          #if (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                              CY_SET_REG16(CapSense_PWM_CH1_PERIOD_PTR,
+                                ((uint16) CapSense_widgetResolution[widget] << 8u) | CapSense_MEASURE_FULL_RANGE_LOW);
+                          #else
+                              CapSense_PWM_CH1_PERIOD_HI_REG = CapSense_widgetResolution[widget];
+                          #endif  /* (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF)*/ 
+                      }
+              
+                      #if ( (CapSense_MULTIPLE_PRESCALER_ENABLED) || \
+                            (CapSense_TUNING_METHOD == CapSense_AUTO_TUNING) )
+                          CapSense_SetPrescaler(CapSense_AnalogSwitchDivider[slot]);
+                      #elif (CapSense_PRESCALER_OPTIONS)
+                          CapSense_SetPrescaler(CapSense_AnalogSwitchDivider);
+                      #endif /* ((CapSense_MULTIPLE_PRESCALER_ENABLED) || \
+                             *   (CapSense_TUNING_METHOD == CapSense_AUTO_TUNING))
+                             */
+              
+                  #endif  /* CapSense_DESIGN_TYPE */
+ 944   1      }
+ 945          
+ 946          
+ 947          /*******************************************************************************
+ 948          * Function Name: CapSense_ScanSensor
+ 949          ********************************************************************************
+ 950          *
+ 951          * Summary:
+ 952          *  Sets scan settings and starts scanning a sensor or pair of combined sensors
+ 953          *  on each channel. If two channels are configured, two sensors may be scanned 
+ 954          *  at the same time. After scanning is complete the isr copies the measured 
+ 955          *  sensor raw data to the global array. Use of the isr ensures this function 
+ 956          *  is non-blocking. Each sensor has a unique number within the sensor array. 
+ 957          *  This number is assigned by the CapSense customizer in sequence.
+ 958          *
+ 959          * Parameters:
+ 960          *  sensor:  Sensor number.
+ 961          *
+ 962          * Return:
+ 963          *  None
+ 964          *
+ 965          * Global Variables:
+ 966          *  CapSense_csv - used to provide status and mode of scanning process. 
+ 967          *  Sets busy status(scan in progress) and mode of scan as single scan.
+ 968          *  For two channel design the additional bits are set to define if scan a 
+ 969          *  pair of sensors or single one.
+ 970          *  CapSense_sensorIndex - used to store sensor scanning sensor number.
+ 971          *  Sets to provided sensor argument.
+ 972          *
+ 973          * Reentrant:
+ 974          *  No
+ 975          *
+ 976          *******************************************************************************/
+ 977          void CapSense_ScanSensor(uint8 sensor)  
+ 978          {
+ 979   1          /* Clears status/control variable and set sensorIndex */
+ 980   1          CapSense_csv = 0u;
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 17  
+
+ 981   1          CapSense_sensorIndex = sensor;
+ 982   1          
+ 983   1          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+ 984   1              /* Start of sensor scan */
+ 985   1              CapSense_csv = (CapSense_SW_STS_BUSY | CapSense_SW_CTRL_SINGLE_SCAN);
+ 986   1              CapSense_PreScan(sensor);
+ 987   1              
+ 988   1          #else
+                      /* CH0: check end of scan conditions */
+                      if(sensor < CapSense_TOTAL_SENSOR_COUNT__CH0)
+                      {
+                          CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH0;
+                      }
+                      else
+                      {
+                          CapSense_CONTROL_REG &= ~CapSense_CTRL_WINDOW_EN__CH0;
+                      }
+                      
+                      /* CH1: check end of scan conditions */
+                      if(sensor < CapSense_TOTAL_SENSOR_COUNT__CH1)
+                      {
+                          CapSense_CONTROL_REG |= CapSense_CTRL_WINDOW_EN__CH1;
+                      }
+                      else
+                      {
+                          CapSense_CONTROL_REG &= ~CapSense_CTRL_WINDOW_EN__CH1;
+                      }
+                      
+                      /* Start sensor scan */
+                      if( ((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH0) != 0u) || 
+                          ((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH1) != 0u) )
+                      {
+                      
+                          CapSense_csv |= (CapSense_SW_STS_BUSY | CapSense_SW_CTRL_SINGLE_SCAN);
+                          CapSense_PreScan(sensor);
+                      }
+                      
+                  #endif  /* CapSense_DESIGN_TYPE */
+1019   1      }
+1020          
+1021          
+1022          /*******************************************************************************
+1023          * Function Name: CapSense_ScanEnableWidgets
+1024          ********************************************************************************
+1025          *
+1026          * Summary:
+1027          *  Scans all of the enabled widgets. Starts scanning a sensor or pair of sensors 
+1028          *  within enabled widget. The isr proceeding scanning next sensor or pair till 
+1029          *  all enabled widgets will be scanned. Use of the isr ensures this function is 
+1030          *  non-blocking. All widgets are enabled by default except proximity widgets. 
+1031          *  Proximity widgets must be manually enabled as their long scan time is 
+1032          *  incompatible with fast response desired of other widget types.
+1033          *
+1034          * Parameters:
+1035          *  None
+1036          *
+1037          * Return:
+1038          *  None
+1039          *
+1040          * Global Variables:
+1041          *  CapSense_csv - used to provide status and mode of scanning process. 
+1042          *  Sets busy status(scan in progress) and clears single scan mode.
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 18  
+
+1043          *  For two channel design the additional bits are set to define if scan a 
+1044          *  pair of sensors or single one. 
+1045          *  CapSense_sensorIndex - used to store sensor scanning sensor number.
+1046          *  Sets to 0xFF and provided to function CapSense_FindNextSensor or
+1047          *  CapSense_FindNextPair, these functions starts with sensor index
+1048          *  increment and overflow of uint8 gives desired index 0.
+1049          *
+1050          * Reentrant:
+1051          *  No
+1052          *
+1053          *******************************************************************************/
+1054          void CapSense_ScanEnabledWidgets(void) 
+1055          {
+1056   1          /* Clears status/control variable and set sensorIndex */
+1057   1          CapSense_csv = 0u;
+1058   1          CapSense_sensorIndex = 0xFFu;
+1059   1          
+1060   1          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+1061   1              /* Find next sensor */
+1062   1              CapSense_sensorIndex = CapSense_FindNextSensor(CapSense_sensorIndex);
+1063   1      
+1064   1              /* Check end of scan condition */
+1065   1              if(CapSense_sensorIndex < CapSense_TOTAL_SENSOR_COUNT)
+1066   1              {
+1067   2                  CapSense_csv |= CapSense_SW_STS_BUSY;
+1068   2                  CapSense_PreScan(CapSense_sensorIndex);
+1069   2              }
+1070   1              
+1071   1          #else
+                      /* Find next sensor and set proper control register */
+                      CapSense_sensorIndex = CapSense_FindNextPair(CapSense_sensorIndex);
+                      
+                      /* Start sensor scan */
+                      if((CapSense_sensorIndex < CapSense_TOTAL_SENSOR_COUNT__CH0) || 
+                         (CapSense_sensorIndex < CapSense_TOTAL_SENSOR_COUNT__CH1))
+                      {
+                          CapSense_csv |= CapSense_SW_STS_BUSY;
+                          CapSense_PreScan(CapSense_sensorIndex);
+                      }
+                      
+                  #endif  /* CapSense_DESIGN_TYPE */
+1084   1      }
+1085          
+1086          
+1087          /*******************************************************************************
+1088          * Function Name: CapSense_IsBusy
+1089          ********************************************************************************
+1090          *
+1091          * Summary:
+1092          *  Returns the state of CapSense component. The 1 means that scanning in 
+1093          *  progress and 0 means that scanning is complete.
+1094          *
+1095          * Parameters:
+1096          *  None
+1097          *
+1098          * Return:
+1099          *  Returns the state of scanning. 1 - scanning in progress, 0 - scanning 
+1100          *  completed.
+1101          *
+1102          * Global Variables:
+1103          *  CapSense_csv - used to provide status and mode of scanning process. 
+1104          *  Checks the busy status.
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 19  
+
+1105          *
+1106          *******************************************************************************/
+1107          uint8 CapSense_IsBusy(void) 
+1108          {
+1109   1          return ((CapSense_csv & CapSense_SW_STS_BUSY) == 
+1110   1                   CapSense_SW_STS_BUSY) ? 1u : 0u;
+1111   1      }
+1112          
+1113          
+1114          /*******************************************************************************
+1115          * Function Name: CapSense_ReadSensorRaw
+1116          ********************************************************************************
+1117          *
+1118          * Summary:
+1119          *  Returns scan sensor raw data from the CapSense_SensorRaw[] array. 
+1120          *  Each scan sensor has a unique number within the sensor array. This number 
+1121          *  is assigned by the CapSense customizer in sequence.
+1122          *
+1123          * Parameters:
+1124          *  sensor:  Sensor number.
+1125          *
+1126          * Return:
+1127          *  Returns current raw data value for defined sensor number.
+1128          *
+1129          * Global Variables:
+1130          *  CapSense_SensorRaw[] - used to store sensors raw data.
+1131          *
+1132          *******************************************************************************/
+1133          uint16 CapSense_ReadSensorRaw(uint8 sensor) 
+1134          {
+1135   1          return CapSense_SensorRaw[sensor];
+1136   1      }
+1137          
+1138          
+1139          /*******************************************************************************
+1140          * Function Name: CapSense_ClearSensors
+1141          ********************************************************************************
+1142          *
+1143          * Summary:
+1144          *  Resets all sensors to the non-sampling state by sequentially disconnecting
+1145          *  all sensors from Analog MUX Bus and putting them to inactive state.
+1146          *
+1147          * Parameters:
+1148          *  None
+1149          *
+1150          * Return:
+1151          *  None
+1152          *
+1153          *******************************************************************************/
+1154          void CapSense_ClearSensors(void) 
+1155          {
+1156   1          uint8 i;
+1157   1         
+1158   1          for (i = 0u; i < CapSense_TOTAL_SENSOR_COUNT; i++)
+1159   1          {
+1160   2              CapSense_DisableScanSlot(i);
+1161   2          }
+1162   1      }
+1163          
+1164          
+1165          #if (CapSense_IS_COMPLEX_SCANSLOTS)
+                  /*******************************************************************************
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 20  
+
+                  * Function Name: CapSense_EnableScanSlot
+                  ********************************************************************************
+                  *
+                  * Summary:
+                  *  Configures the selected slot to measure during the next measurement 
+                  *  cycle. The corresponding pin/pins are set to Analog High-Z mode and 
+                  *  connected to the Analog Mux Bus. This also enables the comparator function.
+                  *
+                  * Parameters:
+                  *  slot:  Slot number.
+                  *
+                  * Return:
+                  *  None
+                  *
+                  * Global Constants:
+                  *  CapSense_portTable[]  - used to store the port number that pin 
+                  *  belongs to for every sensor.
+                  *  CapSense_maskTable[]  - used to store the pin within the port for 
+                  *  every sensor.
+                  *  CapSense_indexTable[] - used to store indexes of complex sensors.
+                  *  The offset and position in this array are stored in port and mask table for 
+                  *  complex sensors.
+                  *  The bit 7 (msb) is used to define the sensor type: single or complex.
+                  *
+                  *******************************************************************************/
+                  void CapSense_EnableScanSlot(uint8 slot) 
+                  {
+                      uint8 j;
+                      uint8 snsNumber;
+                      const uint8 CYCODE *index;
+                      /* Read the sensor type: single or complex */
+                      uint8 snsType = CapSense_portTable[slot];
+                      
+                      /* Check if sensor is complex */
+                      if ((snsType & CapSense_COMPLEX_SS_FLAG) == 0u)
+                      {
+                          /* Enable sensor (signle) */
+                          CapSense_EnableSensor(slot);
+                      }
+                      else
+                      {
+                          /* Enable complex sensor */
+                          snsType &= ~CapSense_COMPLEX_SS_FLAG;
+                          index = &CapSense_indexTable[snsType];
+                          snsNumber = CapSense_maskTable[slot];
+                                      
+                          for (j=0; j < snsNumber; j++)
+                          {
+                              CapSense_EnableSensor(index[j]);
+                          }
+                      } 
+                  }
+                  
+                  
+                  /*******************************************************************************
+                  * Function Name: CapSense_DisableScanSlot
+                  ********************************************************************************
+                  *
+                  * Summary:
+                  *  Disables the selected slot. The corresponding pin/pis is/are disconnected 
+                  *  from the Analog Mux Bus and connected to GND, High_Z or Shield electrode.
+                  *
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 21  
+
+                  * Parameters:
+                  *  slot:  Slot number.
+                  *
+                  * Return:
+                  *  None
+                  *
+                  * Global Variables:
+                  *  CapSense_portTable[]  - used to store the port number that pin 
+                  *  belongs to for every sensor.
+                  *  CapSense_maskTable[]  - used to store the pin within the port for 
+                  *  every sensor.
+                  *  CapSense_indexTable[] - used to store indexes of complex sensors.
+                  *  The offset and position in this array are stored in port and mask table for 
+                  *  complex sensors.
+                  *  The 7bit(msb) is used to define the sensor type: single or complex.
+                  *
+                  *******************************************************************************/
+                  void CapSense_DisableScanSlot(uint8 slot) 
+                  {
+                      uint8 j;
+                      uint8 snsNumber;
+                      const uint8 CYCODE *index;
+                      /* Read the sensor type: single or complex */
+                      uint8 snsType = CapSense_portTable[slot];
+                      
+                      /* Check if sensor is complex */
+                      if ((snsType & CapSense_COMPLEX_SS_FLAG) == 0u)
+                      {
+                          /* Disable sensor (signle) */
+                          CapSense_DisableSensor(slot);
+                      }
+                      else
+                      {
+                          /* Disable complex sensor */
+                          snsType &= ~CapSense_COMPLEX_SS_FLAG;
+                          index = &CapSense_indexTable[snsType];
+                          snsNumber = CapSense_maskTable[slot];
+                                      
+                          for (j=0; j < snsNumber; j++)
+                          {
+                              CapSense_DisableSensor(index[j]);
+                          }
+                      } 
+                  }
+              #endif  /* CapSense_IS_COMPLEX_SCANSLOTS */
+1274          
+1275          
+1276          /*******************************************************************************
+1277          * Function Name: CapSense_EnableSensor
+1278          ********************************************************************************
+1279          *
+1280          * Summary:
+1281          *  Configures the selected sensor to measure during the next measurement cycle.
+1282          *  The corresponding pins are set to Analog High-Z mode and connected to the
+1283          *  Analog Mux Bus. This also enables the comparator function.
+1284          *
+1285          * Parameters:
+1286          *  sensor:  Sensor number.
+1287          *
+1288          * Return:
+1289          *  None
+1290          *
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 22  
+
+1291          * Global Variables:
+1292          *  CapSense_portTable[] - used to store the port number that pin 
+1293          *  belongs to for every sensor.
+1294          *  CapSense_maskTable[] - used to store the pin within the port for 
+1295          *  every sensor.
+1296          *  CapSense_csTable[]   - used to store the pointers to CAPS_SEL 
+1297          *  registers for every port.
+1298          *  CapSense_pcTable[]   - used to store the pointers to PC pin 
+1299          *  register for every sensor.
+1300          *  CapSense_amuxIndex[] - used to store corrected AMUX index when 
+1301          *  complex sensors are defeined.
+1302          *
+1303          *******************************************************************************/
+1304          void CapSense_EnableSensor(uint8 sensor) CYREENTRANT
+1305          {
+1306   1          uint8 port = CapSense_portTable[sensor];
+1307   1          uint8 mask = CapSense_maskTable[sensor];
+1308   1          
+1309   1          #if ((CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) && \
+1310   1               (CapSense_IS_COMPLEX_SCANSLOTS))
+                      uint8 amuxCh = CapSense_amuxIndex[sensor];
+                  #endif  /* ((CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) && \
+                          *   (CapSense_IS_COMPLEX_SCANSLOTS))
+                          */
+1315   1          
+1316   1          /* Make sensor High-Z */
+1317   1          *CapSense_pcTable[sensor] = CapSense_PRT_PC_HIGHZ;
+1318   1          
+1319   1          /* Connect to DSI output */
+1320   1              if(port == 15u)
+1321   1              {
+1322   2                      port = 7u;
+1323   2              }
+1324   1          *CapSense_csTable[port] |= mask;
+1325   1          
+1326   1          /* Connect to AMUX */
+1327   1          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+1328   1              #if (CapSense_IS_COMPLEX_SCANSLOTS)
+                          CapSense_AMuxCH0_Connect(CapSense_amuxIndex[sensor]);
+                      #else
+1331   1                  CapSense_AMuxCH0_Connect(sensor);
+1332   1              #endif  /* CapSense_IS_COMPLEX_SCANSLOTS */
+1333   1                      
+1334   1          #else
+                      #if (CapSense_IS_COMPLEX_SCANSLOTS)
+                          if ((amuxCh & CapSense_CHANNEL1_FLAG) == 0u)
+                          {
+                              CapSense_AMuxCH0_Connect(amuxCh);
+                          } 
+                          else
+                          {
+                              amuxCh &= ~ CapSense_CHANNEL1_FLAG;
+                              CapSense_AMuxCH1_Connect(amuxCh);
+                          }
+                          
+                      #else
+                          if (sensor < CapSense_TOTAL_SENSOR_COUNT__CH0) 
+                          {
+                              CapSense_AMuxCH0_Connect(sensor);
+                          } 
+                          else
+                          {
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 23  
+
+                              CapSense_AMuxCH1_Connect(sensor - CapSense_TOTAL_SENSOR_COUNT__CH0);
+                          }
+                          
+                      #endif  /* CapSense_IS_COMPLEX_SCANSLOTS */
+                      
+                  #endif  /* CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN */
+1359   1      }
+1360          
+1361          
+1362          /*******************************************************************************
+1363          * Function Name: CapSense_DisableSensor
+1364          ********************************************************************************
+1365          *
+1366          * Summary:
+1367          *  Disables the selected sensor. The corresponding pin is disconnected from the
+1368          *  Analog Mux Bus and connected to GND, High_Z or Shield electrode.
+1369          *
+1370          * Parameters:
+1371          *  sensor:  Sensor number
+1372          *
+1373          * Return:
+1374          *  None
+1375          *
+1376          * Global Variables:
+1377          *  CapSense_portTable[] - used to store the port number that pin 
+1378          *  belongs to for every sensor.
+1379          *  CapSense_maskTable[] - used to store the pin within the port for 
+1380          *  every sensor.
+1381          *  CapSense_csTable[]   - used to store the pointers to CAPS_SEL 
+1382          *  registers for every port.
+1383          *  CapSense_pcTable[]   - used to store the pointers to PC pin 
+1384          *  register for every sensor.
+1385          *  CapSense_amuxIndex[] - used to store corrected AMUX index when 
+1386          *  complex sensors are defeined.
+1387          *
+1388          *******************************************************************************/
+1389          void CapSense_DisableSensor(uint8 sensor) CYREENTRANT
+1390          {
+1391   1          uint8 port = CapSense_portTable[sensor];
+1392   1          uint8 mask = CapSense_maskTable[sensor];
+1393   1          
+1394   1          #if ((CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) && \
+1395   1               (CapSense_IS_COMPLEX_SCANSLOTS))
+                      uint8 amuxCh = CapSense_amuxIndex[sensor];
+                  #endif  /* ((CapSense_DESIGN_TYPE == CapSense_TWO_CHANNELS_DESIGN) && \
+                          *   (CapSense_IS_COMPLEX_SCANSLOTS))
+                          */
+1400   1          
+1401   1          /* Disconnect from AMUX */
+1402   1          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+1403   1              #if (CapSense_IS_COMPLEX_SCANSLOTS)
+                          CapSense_AMuxCH0_Disconnect(CapSense_amuxIndex[sensor]);
+                      #else
+1406   1                  CapSense_AMuxCH0_Disconnect(sensor);
+1407   1              #endif  /* CapSense_IS_COMPLEX_SCANSLOTS */
+1408   1                      
+1409   1          #else
+                      #if (CapSense_IS_COMPLEX_SCANSLOTS)
+                          if ((amuxCh & CapSense_CHANNEL1_FLAG) == 0u)
+                          {
+                              CapSense_AMuxCH0_Disconnect(amuxCh);
+                          } 
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 24  
+
+                          else
+                          {
+                              amuxCh &= ~ CapSense_CHANNEL1_FLAG;
+                              CapSense_AMuxCH1_Disconnect(amuxCh);
+                          }
+                          
+                      #else
+                          if (sensor < CapSense_TOTAL_SENSOR_COUNT__CH0) 
+                          {
+                              CapSense_AMuxCH0_Disconnect(sensor);
+                          } 
+                          else
+                          {
+                              CapSense_AMuxCH1_Disconnect(sensor - CapSense_TOTAL_SENSOR_COUNT__CH0);
+                          }
+                          
+                      #endif  /* CapSense_IS_COMPLEX_SCANSLOTS */
+                      
+                  #endif  /* CapSense_DESIGN_TYPE */
+1434   1          
+1435   1          /* Disconnect from DSI output */
+1436   1              if(port == 15u)
+1437   1              {
+1438   2                      port = 7u;
+1439   2              }
+1440   1          *CapSense_csTable[port] &= ~mask;
+1441   1          
+1442   1          /* Set sensor to inactive state */
+1443   1          #if (CapSense_CONNECT_INACTIVE_SNS == CapSense_CIS_GND)
+1444   1              *CapSense_pcTable[sensor] = CapSense_PRT_PC_GND;
+1445   1          #elif (CapSense_CONNECT_INACTIVE_SNS == CapSense_CIS_HIGHZ)
+                      *CapSense_pcTable[sensor] = CapSense_PRT_PC_HIGHZ;
+                  #else
+                      *CapSense_pcTable[sensor] = CapSense_PRT_PC_SHIELD;
+                  #endif  /* (CapSense_CONNECT_INACTIVE_SNS == CapSense_CIS_GND) */
+1450   1      }
+1451          
+1452          
+1453          /*******************************************************************************
+1454          * Function Name: CapSense_PreScan
+1455          ********************************************************************************
+1456          *
+1457          * Summary:
+1458          *  Set required settings, enable sensor, remove Vref from AMUX and start the 
+1459          *  scanning process of the sensor.
+1460          *
+1461          * Parameters:
+1462          *  sensor:  Sensor number.
+1463          *
+1464          * Return:
+1465          *  None
+1466          *
+1467          * Global Variables:
+1468          *  CapSense_rbTable[] - used to store pointers to PC pin registers for 
+1469          *  every bleed resistor (Rb). Only available when Current Source is External 
+1470          *  resistor.
+1471          *
+1472          *******************************************************************************/
+1473          void CapSense_PreScan(uint8 sensor) CYREENTRANT
+1474          {
+1475   1          /* Set Sensor Settings */
+1476   1          CapSense_SetScanSlotSettings(sensor);
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 25  
+
+1477   1          
+1478   1          /* Place disable interrupts here to eliminate influence on start of scanning */
+1479   1          /* `#START CapSense_PreScan_DisableInt` */
+1480   1      
+1481   1          /* `#END` */
+1482   1          
+1483   1          /* Resets digital and pre-charge clocks */
+1484   1          CapSense_CONTROL_REG |= CapSense_CTRL_SYNC_EN;
+1485   1              
+1486   1          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+1487   1              #if (CapSense_CURRENT_SOURCE == CapSense_IDAC_SOURCE)
+1488   1                  /* Disable Vref from AMux */
+1489   1                  #if (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS)
+                              CapSense_AMuxCH0_Disconnect(CapSense_AMuxCH0_VREF_CHANNEL);
+                          #else
+1492   1                      CapSense_BufCH0_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+1493   1                  #endif  /* (CapSense_VREF_VDAC != CapSense_VREF_OPTIONS) */
+1494   1      
+1495   1                  /* Enable Sensor */
+1496   1                  CapSense_EnableScanSlot(sensor);
+1497   1                  
+1498   1              #elif (CapSense_CURRENT_SOURCE == CapSense_IDAC_SINK)
+                          /* Connect IDAC */
+                          CapSense_AMuxCH0_Connect(CapSense_AMuxCH0_IDAC_CHANNEL);
+                          
+                          /* Enable Sensor */
+                          CapSense_EnableScanSlot(sensor);
+                              
+                          /* Disable CapSense Buffer */
+                          CapSense_BufCH0_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+                          
+                      #else
+                          /* Connect DSI output to Rb */
+                          *CapSense_rbTable[CapSense_RbCh0_cur] |= CapSense_BYP_MASK;
+                          
+                          /* Enable Sensor */
+                          CapSense_EnableScanSlot(sensor);
+                           
+                          /* Disable CapSense Buffer */
+                          CapSense_BufCH0_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+                      
+                      #endif  /* (CapSense_CURRENT_SOURCE == CapSense_IDAC_SOURCE) */
+1519   1              
+1520   1          #else
+              
+                      if((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH0) != 0u)
+                      {
+                          #if (CapSense_CURRENT_SOURCE == CapSense_IDAC_SOURCE)
+                              /* Disable Vref from AMux */
+                              #if (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS)
+                                  CapSense_AMuxCH0_Disconnect(CapSense_AMuxCH0_VREF_CHANNEL);
+                              #else
+                                  CapSense_BufCH0_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+                              #endif  /* (CapSense_VREF_VDAC != CapSense_VREF_OPTIONS) */
+                              
+                              /* Enable Sensor */
+                              CapSense_EnableScanSlot(sensor);
+                              
+                          #elif (CapSense_CURRENT_SOURCE == CapSense_IDAC_SINK)
+                              /* Connect IDAC */
+                              CapSense_AMuxCH0_Connect(CapSense_AMuxCH0_IDAC_CHANNEL);
+                              
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 26  
+
+                              /* Enable Sensor */
+                              CapSense_EnableScanSlot(sensor);
+                                  
+                              /* Disable Vref from AMux */
+                              CapSense_BufCH0_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+                              
+                          #else
+                              /* Connect DSI output to Rb */
+                              *CapSense_rbTable[CapSense_RbCh0_cur] |= CapSense_BYP_MASK;
+                              
+                              /* Enable Sensor */
+                              CapSense_EnableScanSlot(sensor);
+                                  
+                              /* Disable Vref from AMux */
+                              CapSense_BufCH0_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+                          
+                          #endif  /* (CapSense_CURRENT_SOURCE == CapSense_IDAC_SOURCE) */
+                          
+                      }
+                      
+                      if((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH1) != 0u)
+                      {
+                          sensor += CapSense_TOTAL_SENSOR_COUNT__CH0;
+                          
+                          #if (CapSense_CURRENT_SOURCE == CapSense_IDAC_SOURCE)
+                              /* Disable Vref from AMux */
+                              #if (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS)
+                                 CapSense_AMuxCH1_Disconnect(CapSense_AMuxCH1_VREF_CHANNEL);
+                              #else 
+                                  CapSense_BufCH1_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+                              #endif  /* (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS) */
+                              
+                              /* Enable Sensor */
+                              CapSense_EnableScanSlot(sensor);
+                              
+                          #elif (CapSense_CURRENT_SOURCE == CapSense_IDAC_SINK)
+                              /* Connect IDAC */
+                              CapSense_AMuxCH1_Connect(CapSense_AMuxCH1_IDAC_CHANNEL);
+                              
+                              /* Enable Sensor */
+                              CapSense_EnableScanSlot(sensor);
+                                  
+                              /* Disable Vref from AMux */
+                              CapSense_BufCH1_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+                              
+                          #else
+                              /* Connect DSI output to Rb */
+                              *CapSense_rbTable[CapSense_RbCh1_cur] |= CapSense_BYP_MASK;
+                              
+                              /* Enable Sensor */
+                              CapSense_EnableScanSlot(sensor);
+                              
+                              /* Disable Vref from AMux */
+                              CapSense_BufCH1_CAPS_CFG0_REG &= ~CapSense_CSBUF_ENABLE;
+                          
+                          #endif  /* (CapSense_CURRENT_SOURCE == CapSense_IDAC_SOURCE) */
+                      }
+                  
+                  #endif  /* (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN) */
+1598   1          
+1599   1          /* Start measurament, pre-charge clocks are running and PRS as well */
+1600   1          CapSense_CONTROL_REG |= CapSense_CTRL_START;
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 27  
+
+1601   1          
+1602   1          /* Place enable interrupts here to eliminate influence on start of scanning */
+1603   1          /* `#START CapSense_PreScan_EnableInt` */
+1604   1      
+1605   1          /* `#END` */
+1606   1      }
+1607          
+1608          
+1609          #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+1610              /*******************************************************************************
+1611              * Function Name: CapSense_PostScan
+1612              ********************************************************************************
+1613              *
+1614              * Summary:
+1615              *  Store results of measurament in CapSense_SensorResult[] array,
+1616              *  sets scan sensor in none sampling state, turn off Idac(Current Source IDAC),
+1617              *  disconnect IDAC(Sink mode) or bleed resistor (Rb) and apply Vref on AMUX.
+1618              *  Only one channel designs.
+1619              *
+1620              * Parameters:
+1621              *  sensor:  Sensor number.
+1622              *
+1623              * Return:
+1624              *  None
+1625              *
+1626              * Global Variables:
+1627              *  CapSense_SensorRaw[] - used to store sensors raw data.
+1628              *
+1629              * Reentrant:
+1630              *  No
+1631              *
+1632              *******************************************************************************/
+1633              void CapSense_PostScan(uint8 sensor) 
+1634              {
+1635   1              /* Stop Capsensing and rearm sync */
+1636   1              CapSense_CONTROL_REG &= ~(CapSense_CTRL_START | CapSense_CTRL_SYNC_EN);
+1637   1              
+1638   1              /* Read SlotResult from Raw Counter */
+1639   1              #if (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                          CapSense_SensorRaw[sensor]  = CapSense_MEASURE_FULL_RANGE - 
+                                                                    CY_GET_REG16(CapSense_RAW_CH0_COUNTER_PTR);
+                      #else
+1643   1                  CapSense_SensorRaw[sensor]  = ((uint16) CapSense_RAW_CH0_COUNTER_HI_REG << 8u);
+1644   1                  CapSense_SensorRaw[sensor] |= (uint16) CapSense_RAW_CH0_COUNTER_LO_REG;
+1645   1                  CapSense_SensorRaw[sensor]  = CapSense_MEASURE_FULL_RANGE -
+1646   1                                                            CapSense_SensorRaw[sensor];
+1647   1              #endif  /* (CapSense_IMPLEMENTATION == CapSense_MEASURE_IMPLEMENTATION_FF) */
+1648   1              
+1649   1              /* Disable Sensor */
+1650   1              CapSense_DisableScanSlot(sensor);
+1651   1              
+1652   1              #if(CapSense_CURRENT_SOURCE)
+1653   1                  /* Turn off IDAC */
+1654   1                  CapSense_IdacCH0_SetValue(CapSense_TURN_OFF_IDAC);
+1655   1                  #if (CapSense_CURRENT_SOURCE == CapSense_IDAC_SINK)
+                              /* Disconnect IDAC */
+                              CapSense_AMuxCH0_Disconnect(CapSense_AMuxCH0_IDAC_CHANNEL);
+                          #endif  /* (CapSense_CURRENT_SOURCE == CapSense_IDAC_SINK) */
+1659   1              #else
+                          /* Disconnect DSI output from Rb */
+                          *CapSense_rbTable[CapSense_RbCh0_cur] &= ~CapSense_BYP_MASK; 
+                      #endif  /* (CapSense_CURRENT_SOURCE)*/
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 28  
+
+1663   1                  
+1664   1              /* Enable Vref on AMUX */
+1665   1              #if (CapSense_VREF_OPTIONS == CapSense_VREF_VDAC)
+                          CapSense_AMuxCH0_Connect(CapSense_AMuxCH0_VREF_CHANNEL);
+                      #else
+1668   1                  CapSense_BufCH0_CAPS_CFG0_REG |= CapSense_CSBUF_ENABLE;
+1669   1              #endif  /* (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS) */
+1670   1          }
+1671              
+1672          #else
+              
+                  /*******************************************************************************
+                  * Function Name: CapSense_PostScan
+                  ********************************************************************************
+                  *
+                  * Summary:
+                  *  Store results of measurament in CapSense_SensorResult[] array,
+                  *  sets scan sensor in none sampling state, turn off Idac(Current Source IDAC),
+                  *  disconnect IDAC(Sink mode) or bleed resistor (Rb) and apply Vref on AMUX.
+                  *  Only used for channel 0 in two channes designs.
+                  *
+                  * Parameters:
+                  *  sensor:  Sensor number.
+                  *
+                  * Return:
+                  *  None
+                  *
+                  * Global Variables:
+                  *  CapSense_SensorRaw[] - used to store sensors raw data.
+                  *
+                  * Reentrant:
+                  *  No
+                  *
+                  *******************************************************************************/
+                  void CapSense_PostScanCh0(uint8 sensor) 
+                  {
+                      if (((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH0) == 0u) && 
+                          ((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH1) == 0u)) 
+                      {
+                          /* Stop Capsensing and rearm sync */
+                          CapSense_CONTROL_REG &= ~(CapSense_CTRL_START | CapSense_CTRL_SYNC_EN);
+                      }
+                      
+                      /* Read SlotResult from Raw Counter */
+                      #if (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                          CapSense_SensorRaw[sensor]  = CapSense_MEASURE_FULL_RANGE - 
+                                                                    CY_GET_REG16(CapSense_RAW_CH0_COUNTER_PTR);
+                      #else
+                          CapSense_SensorRaw[sensor]  = ((uint16) CapSense_RAW_CH0_COUNTER_HI_REG << 8u);
+                          CapSense_SensorRaw[sensor] |= (uint16) CapSense_RAW_CH0_COUNTER_LO_REG;
+                          CapSense_SensorRaw[sensor]  = CapSense_MEASURE_FULL_RANGE - 
+                                                                    CapSense_SensorRaw[sensor];
+                      #endif  /* (CapSense_IMPLEMENTATION_CH0 == CapSense_MEASURE_IMPLEMENTATION_FF)*/
+                      
+                      /* Disable Sensor */
+                      CapSense_DisableScanSlot(sensor);
+                      
+                      #if (CapSense_CURRENT_SOURCE)
+                          /* Turn off IDAC */
+                          CapSense_IdacCH0_SetValue(CapSense_TURN_OFF_IDAC);
+                          #if (CapSense_CURRENT_SOURCE == CapSense_IDAC_SINK)
+                              /* Disconnect IDAC */
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 29  
+
+                              CapSense_AMuxCH0_Disconnect(CapSense_AMuxCH0_IDAC_CHANNEL);
+                          #endif  /* (CapSense_CURRENT_SOURCE == CapSense_IDAC_SINK) */
+                      #else
+                          /* Disconnect DSI output from Rb */
+                          *CapSense_rbTable[CapSense_RbCh0_cur] &= ~CapSense_BYP_MASK; 
+                      #endif  /* (CapSense_CURRENT_SOURCE)*/
+                      
+                      /* Enable Vref on AMUX */
+                      #if (CapSense_VREF_OPTIONS == CapSense_VREF_VDAC)
+                          CapSense_AMuxCH0_Connect(CapSense_AMuxCH0_VREF_CHANNEL);
+                      #else
+                          CapSense_BufCH0_CAPS_CFG0_REG |= CapSense_CSBUF_ENABLE;
+                      #endif  /* (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS) */
+                  }
+                  
+                  
+                  /*******************************************************************************
+                  * Function Name: CapSense_PostScanCh1
+                  ********************************************************************************
+                  *
+                  * Summary:
+                  *  Store results of measurament in CapSense_SensorResult[] array,
+                  *  sets scan sensor in none sampling state, turn off Idac(Current Source IDAC), 
+                  *  disconnect IDAC(Sink mode) or bleed resistor (Rb) and apply Vref on AMUX.
+                  *  Only used for channel 1 in two channes designs.
+                  *
+                  * Parameters:
+                  *  sensor:  Sensor number.
+                  *
+                  * Return:
+                  *  None
+                  *
+                  * Global Variables:
+                  *  CapSense_SensorRaw[] - used to store sensors raw data.
+                  *
+                  * Reentrant:
+                  *  No
+                  *
+                  *******************************************************************************/
+                  void CapSense_PostScanCh1(uint8 sensor) 
+                  {
+                      if (((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH0) == 0u) && 
+                          ((CapSense_CONTROL_REG & CapSense_CTRL_WINDOW_EN__CH1) == 0u))
+                      {
+                          /* Stop Capsensing and rearm sync */
+                          CapSense_CONTROL_REG &= ~(CapSense_CTRL_START | CapSense_CTRL_SYNC_EN);
+                      }
+                      
+                      /* Read SlotResult from Raw Counter */
+                      #if (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF)
+                          CapSense_SensorRaw[sensor]  = CapSense_MEASURE_FULL_RANGE - 
+                                                                    CY_GET_REG16(CapSense_RAW_CH1_COUNTER_PTR);
+                      #else
+                          CapSense_SensorRaw[sensor]  = ((uint16) CapSense_RAW_CH1_COUNTER_HI_REG << 8u);
+                          CapSense_SensorRaw[sensor] |= (uint16) CapSense_RAW_CH1_COUNTER_LO_REG;
+                          CapSense_SensorRaw[sensor]  = CapSense_MEASURE_FULL_RANGE - 
+                                                                    CapSense_SensorRaw[sensor];
+                      #endif  /* (CapSense_IMPLEMENTATION_CH1 == CapSense_MEASURE_IMPLEMENTATION_FF)*/
+                      
+                      /* Disable Sensor */
+                      CapSense_DisableScanSlot(sensor);
+                      
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 30  
+
+                      #if (CapSense_CURRENT_SOURCE)
+                          /* Turn off IDAC */
+                          CapSense_IdacCH1_SetValue(CapSense_TURN_OFF_IDAC);
+                          #if (CapSense_CURRENT_SOURCE == CapSense_IDAC_SINK)
+                              /* Disconnect IDAC */
+                              CapSense_AMuxCH1_Disconnect(CapSense_AMuxCH1_IDAC_CHANNEL);
+                          #endif  /* (CapSense_CURRENT_SOURCE == CapSense_IDAC_SINK) */
+                      #else
+                          /* Disconnect DSI output from Rb */
+                          *CapSense_rbTable[CapSense_RbCh1_cur] &= ~CapSense_BYP_MASK; 
+                      #endif  /* (CapSense_CURRENT_SOURCE)*/
+              
+                      /* Enable Vref on AMUX */
+                      #if (CapSense_VREF_OPTIONS == CapSense_VREF_VDAC)
+                          CapSense_AMuxCH1_Connect(CapSense_AMuxCH1_VREF_CHANNEL);
+                      #else
+                          CapSense_BufCH1_CAPS_CFG0_REG |= CapSense_CSBUF_ENABLE;
+                      #endif  /* (CapSense_VREF_VDAC == CapSense_VREF_OPTIONS) */
+                  }
+                  
+              #endif  /* CapSense_DESIGN_TYPE */
+1808          
+1809          
+1810          #if (CapSense_CURRENT_SOURCE == CapSense_EXTERNAL_RB)
+                  /*******************************************************************************
+                  * Function Name:  CapSense_InitRb
+                  ********************************************************************************
+                  *
+                  * Summary:
+                  *  Sets all Rbleed resistor to High-Z mode. The first Rbleed resistor is active
+                  *  while next measure.
+                  *  This function is available only if Current Source is External Resistor.
+                  *
+                  * Parameters:
+                  *  None
+                  *
+                  * Return:
+                  *  None
+                  *
+                  ********************************************************************************/
+                  void CapSense_InitRb(void) 
+                  {
+                      uint8 i;
+                      
+                      /* Disable all Rb */
+                      for(i=0; i < CapSense_TOTAL_RB_NUMBER; i++)
+                      {
+                          /* Make High-Z */
+                          *CapSense_rbTable[i] = CapSense_PRT_PC_HIGHZ;
+                      }
+                  }
+                  
+                  
+                  /*******************************************************************************
+                  * Function Name: CapSense_SetRBleed
+                  ********************************************************************************
+                  *
+                  * Summary:
+                  *  Sets the pin to use for the bleed resistor (Rb) connection. This function
+                  *  can be called at runtime to select the current Rb pin setting from those 
+                  *  defined customizer. The function overwrites the component parameter setting. 
+                  *  This function is available only if Current Source is External Resistor.
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 31  
+
+                  * 
+                  * Parameters:
+                  *  rbleed:  Ordering number for bleed resistor terminal defined in CapSense
+                  *  customizer.
+                  *
+                  * Return:
+                  *  None
+                  *
+                  * Global Variables:
+                  *  CapSense_RbCh0_cur - used to store current number of active 
+                  *  bleed resistor (Rb) of channel 0.
+                  *  CapSense_RbCh1_cur - used to store current number of active 
+                  *  bleed resistor (Rb) of channel 1.
+                  *  The active bleed resistor (Rb) pin will be used while next measurement  
+                  *  cycle.
+                  *
+                  * Reentrant:
+                  *  No
+                  *
+                  *******************************************************************************/
+                  void CapSense_SetRBleed(uint8 rbleed) 
+                  {
+                      #if (CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN)
+                          CapSense_RbCh0_cur = rbleed;
+                          
+                      #else
+                          if(rbleed < CapSense_TOTAL_RB_NUMBER__CH0)
+                          {
+                              CapSense_RbCh0_cur = rbleed;
+                          }
+                          else
+                          {
+                              CapSense_RbCh1_cur = (rbleed - CapSense_TOTAL_RB_NUMBER__CH0);   
+                          }
+                  
+                      #endif  /* CapSense_DESIGN_TYPE == CapSense_ONE_CHANNEL_DESIGN */ 
+                  }
+              #endif /* CapSense_CURRENT_SOURCE == CapSense_EXTERNAL_RB */ 
+1887          
+1888          #if (CapSense_PRESCALER_OPTIONS)
+1889              /*******************************************************************************
+1890              * Function Name: CapSense_SetPrescaler
+1891              ********************************************************************************
+1892              *
+1893              * Summary:
+1894              *  Sets analog switch divider.
+1895              *
+1896              * Parameters:
+1897              *  prescaler:  Sets prescaler divider values.
+1898              *
+1899              * Return:
+1900              *  None
+1901              *
+1902              *******************************************************************************/
+1903              void CapSense_SetPrescaler(uint8 prescaler) CYREENTRANT
+1904              {
+1905   1              /* Set Prescaler */
+1906   1              #if (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB)
+1907   1                  CapSense_PRESCALER_PERIOD_REG = prescaler;
+1908   1                  CapSense_PRESCALER_COMPARE_REG = (prescaler >> 0x01u);
+1909   1              #elif (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_FF)
+                          CY_SET_REG16(CapSense_PRESCALER_PERIOD_PTR, (uint16) prescaler);
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 32  
+
+                          CY_SET_REG16(CapSense_PRESCALER_COMPARE_PTR, (uint16) (prescaler >> 0x01u));
+                      #else
+                          /* Do nothing = config without prescaler */
+                      #endif  /* (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB) */
+1915   1          }
+1916          
+1917          
+1918              /*******************************************************************************
+1919              * Function Name: CapSense_GetPrescaler
+1920              ********************************************************************************
+1921              *
+1922              * Summary:
+1923              *  Gets analog switch divider.
+1924              *
+1925              * Parameters:
+1926              *  None
+1927              *
+1928              * Return:
+1929              *   Returns the prescaler divider value.
+1930              *
+1931              *******************************************************************************/
+1932              uint8 CapSense_GetPrescaler(void) 
+1933              {
+1934   1              uint8 prescaler = 0u;
+1935   1      
+1936   1              /* Get Prescaler */
+1937   1              #if (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB)
+1938   1                  prescaler = CapSense_PRESCALER_PERIOD_REG;
+1939   1                  
+1940   1              #elif (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_FF)
+                          prescaler = (uint8) CY_GET_REG16(CapSense_PRESCALER_PERIOD_PTR);
+                          
+                      #else
+                          /* Do nothing = config without prescaler */
+                      #endif  /* (CapSense_PRESCALER_OPTIONS == CapSense_PRESCALER_UDB) */
+1946   1              
+1947   1              return prescaler;
+1948   1          }
+1949          #endif  /* CapSense_PRESCALER_OPTIONS */
+1950          
+1951          
+1952          /*******************************************************************************
+1953          * Function Name: CapSense_SetScanSpeed
+1954          ********************************************************************************
+1955          *
+1956          * Summary:
+1957          *  Sets ScanSpeed divider.
+1958          *
+1959          * Parameters:
+1960          *  scanspeed:  Sets ScanSpeed divider.
+1961          *
+1962          * Return:
+1963          *  None
+1964          *
+1965          *******************************************************************************/
+1966          void CapSense_SetScanSpeed(uint8 scanspeed) 
+1967          {
+1968   1          CapSense_SCANSPEED_PERIOD_REG = scanspeed; 
+1969   1      }
+1970          
+1971          
+1972          #if (CapSense_PRS_OPTIONS)
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 33  
+
+1973              /*******************************************************************************
+1974              * Function Name: CapSense_SetAnalogSwitchesSource
+1975              ********************************************************************************
+1976              *
+1977              * Summary:
+1978              *  Selects the Analog switches source between PRS and prescaler. It is useful
+1979              *  for sensor capacitance determination for sensors with low self-capacitance.
+1980              *  This function is used in auto-tuning procedure.
+1981              *
+1982              * Parameters:
+1983              *  src:  analog switches source:
+1984              *           CapSense_ANALOG_SWITCHES_SRC_PRESCALER - selects prescaler
+1985              *           CapSense_ANALOG_SWITCHES_SRC_PRS - selects PRS
+1986              *
+1987              * Return:
+1988              *  None
+1989              *
+1990              * Reentrant:
+1991              *  No
+1992              *******************************************************************************/
+1993              void CapSense_SetAnalogSwitchesSource(uint8 src)
+1994                                
+1995              {
+1996   1              if(src == CapSense_ANALOG_SWITCHES_SRC_PRESCALER)
+1997   1              {
+1998   2                  CapSense_CONTROL_REG &= ~0x10u;
+1999   2              }
+2000   1              else
+2001   1              {
+2002   2                  CapSense_CONTROL_REG |= 0x10u;
+2003   2              }
+2004   1          }
+2005          #endif /* (CapSense_PRS_OPTIONS) */
+2006          
+2007          /* [] END OF FILE */
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 34  
+
+ASSEMBLY LISTING OF GENERATED OBJECT CODE
+
+
+             ; FUNCTION CapSense_Init (BEGIN)
+                                           ; SOURCE LINE # 168
+                                           ; SOURCE LINE # 169
+                                           ; SOURCE LINE # 183
+0000 120000      R     LCALL   CapSense_ClearSensors
+                                           ; SOURCE LINE # 199
+0003 7F02              MOV     R7,#02H
+0005 120000      R     LCALL   _CapSense_SetAnalogSwitchesSource
+                                           ; SOURCE LINE # 204
+0008 120000      E     LCALL   CyEnterCriticalSection
+000B 900000      R     MOV     DPTR,#enableInterrupts
+000E EF                MOV     A,R7
+000F F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 205
+0010 906596            MOV     DPTR,#06596H
+0013 E0                MOVX    A,@DPTR
+0014 FF                MOV     R7,A
+0015 EF                MOV     A,R7
+0016 4403              ORL     A,#03H
+0018 FF                MOV     R7,A
+0019 EF                MOV     A,R7
+001A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 206
+001B 900000      R     MOV     DPTR,#enableInterrupts
+001E E0                MOVX    A,@DPTR
+001F FF                MOV     R7,A
+0020 120000      E     LCALL   _CyExitCriticalSection
+                                           ; SOURCE LINE # 209
+0023 906526            MOV     DPTR,#06526H
+0026 74B8              MOV     A,#0B8H
+0028 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 211
+0029 906546            MOV     DPTR,#06546H
+002C 74FF              MOV     A,#0FFH
+002E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 243
+002F 906587            MOV     DPTR,#06587H
+0032 7403              MOV     A,#03H
+0034 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 259
+0035 120000      E     LCALL   CyEnterCriticalSection
+0038 900000      R     MOV     DPTR,#enableInterrupts
+003B EF                MOV     A,R7
+003C F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 260
+003D 906597            MOV     DPTR,#06597H
+0040 E0                MOVX    A,@DPTR
+0041 FF                MOV     R7,A
+0042 EF                MOV     A,R7
+0043 4403              ORL     A,#03H
+0045 FF                MOV     R7,A
+0046 EF                MOV     A,R7
+0047 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 261
+0048 906594            MOV     DPTR,#06594H
+004B E0                MOVX    A,@DPTR
+004C FF                MOV     R7,A
+004D EF                MOV     A,R7
+004E 4403              ORL     A,#03H
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 35  
+
+0050 FF                MOV     R7,A
+0051 EF                MOV     A,R7
+0052 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 262
+0053 900000      R     MOV     DPTR,#enableInterrupts
+0056 E0                MOVX    A,@DPTR
+0057 FF                MOV     R7,A
+0058 120000      E     LCALL   _CyExitCriticalSection
+                                           ; SOURCE LINE # 265
+005B 906527            MOV     DPTR,#06527H
+005E 74FF              MOV     A,#0FFH
+0060 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 266
+0061 906547            MOV     DPTR,#06547H
+0064 74FF              MOV     A,#0FFH
+0066 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 267
+0067 906507            MOV     DPTR,#06507H
+006A 74FF              MOV     A,#0FFH
+006C F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 270
+006D 906524            MOV     DPTR,#06524H
+0070 74FF              MOV     A,#0FFH
+0072 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 271
+0073 906554            MOV     DPTR,#06554H
+0076 74FF              MOV     A,#0FFH
+0078 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 272
+0079 906544            MOV     DPTR,#06544H
+007C 74FF              MOV     A,#0FFH
+007E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 311
+007F 7F05              MOV     R7,#05H
+0081 120000      E     LCALL   _?CyIntDisable
+                                           ; SOURCE LINE # 312
+0084 7C00        E     MOV     R4,#HIGH CapSense_IsrCH0_ISR
+0086 7D00        E     MOV     R5,#LOW CapSense_IsrCH0_ISR
+0088 7F05              MOV     R7,#05H
+008A 120000      E     LCALL   _CyIntSetVector
+                                           ; SOURCE LINE # 313
+008D 7D07              MOV     R5,#07H
+008F 7F05              MOV     R7,#05H
+0091 120000      E     LCALL   _CyIntSetPriority
+                                           ; SOURCE LINE # 322
+0094 120000      E     LCALL   CapSense_AMuxCH0_Init
+                                           ; SOURCE LINE # 323
+0097 7F07              MOV     R7,#07H
+0099 120000      E     LCALL   _?CapSense_AMuxCH0_Set
+                                           ; SOURCE LINE # 324
+009C 7F08              MOV     R7,#08H
+009E 120000      E     LCALL   _?CapSense_AMuxCH0_Set
+                                           ; SOURCE LINE # 326
+00A1 7F09              MOV     R7,#09H
+00A3 120000      E     LCALL   _?CapSense_AMuxCH0_Set
+                                           ; SOURCE LINE # 344
+00A6 906477            MOV     DPTR,#06477H
+00A9 E0                MOVX    A,@DPTR
+00AA FF                MOV     R7,A
+00AB EF                MOV     A,R7
+00AC 4404              ORL     A,#04H
+00AE FF                MOV     R7,A
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 36  
+
+00AF EF                MOV     A,R7
+00B0 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 350
+00B1 120000      E     LCALL   CapSense_CompCH0_Init
+                                           ; SOURCE LINE # 352
+00B4 120000      E     LCALL   CapSense_IdacCH0_Init
+                                           ; SOURCE LINE # 353
+00B7 7F00              MOV     R7,#00H
+00B9 120000      E     LCALL   _CapSense_IdacCH0_SetPolarity
+                                           ; SOURCE LINE # 354
+00BC 7F04              MOV     R7,#04H
+00BE 120000      E     LCALL   _CapSense_IdacCH0_SetRange
+                                           ; SOURCE LINE # 355
+00C1 7F00              MOV     R7,#00H
+00C3 120000      E     LCALL   _?CapSense_IdacCH0_SetValue
+                                           ; SOURCE LINE # 375
+00C6         ?C0001:
+00C6 22                RET     
+             ; FUNCTION CapSense_Init (END)
+
+             ; FUNCTION CapSense_Enable (BEGIN)
+                                           ; SOURCE LINE # 393
+                                           ; SOURCE LINE # 394
+                                           ; SOURCE LINE # 397
+0000 120000      E     LCALL   CyEnterCriticalSection
+0003 900000      R     MOV     DPTR,#enableInterrupts
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 411
+0008 906597            MOV     DPTR,#06597H
+000B E0                MOVX    A,@DPTR
+000C FF                MOV     R7,A
+000D EF                MOV     A,R7
+000E 4420              ORL     A,#020H
+0010 FF                MOV     R7,A
+0011 EF                MOV     A,R7
+0012 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 450
+0013 120000      E     LCALL   CapSense_IntClock_Start
+                                           ; SOURCE LINE # 454
+0016 120000      E     LCALL   CapSense_CompCH0_Enable
+                                           ; SOURCE LINE # 456
+0019 120000      E     LCALL   CapSense_IdacCH0_Enable
+                                           ; SOURCE LINE # 476
+001C 9043BB            MOV     DPTR,#043BBH
+001F E0                MOVX    A,@DPTR
+0020 FF                MOV     R7,A
+0021 EF                MOV     A,R7
+0022 4410              ORL     A,#010H
+0024 FF                MOV     R7,A
+0025 EF                MOV     A,R7
+0026 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 477
+0027 9043AB            MOV     DPTR,#043ABH
+002A E0                MOVX    A,@DPTR
+002B FF                MOV     R7,A
+002C EF                MOV     A,R7
+002D 4410              ORL     A,#010H
+002F FF                MOV     R7,A
+0030 EF                MOV     A,R7
+0031 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 495
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 37  
+
+0032 905870            MOV     DPTR,#05870H
+0035 E0                MOVX    A,@DPTR
+0036 FF                MOV     R7,A
+0037 EF                MOV     A,R7
+0038 4401              ORL     A,#01H
+003A FF                MOV     R7,A
+003B EF                MOV     A,R7
+003C F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 502
+003D 900000      R     MOV     DPTR,#enableInterrupts
+0040 E0                MOVX    A,@DPTR
+0041 FF                MOV     R7,A
+0042 120000      E     LCALL   _CyExitCriticalSection
+                                           ; SOURCE LINE # 505
+0045 7F05              MOV     R7,#05H
+0047 120000      E     LCALL   _?CyIntEnable
+                                           ; SOURCE LINE # 511
+004A 906477            MOV     DPTR,#06477H
+004D E0                MOVX    A,@DPTR
+004E FF                MOV     R7,A
+004F EF                MOV     A,R7
+0050 4480              ORL     A,#080H
+0052 FF                MOV     R7,A
+0053 EF                MOV     A,R7
+0054 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 512
+0055         ?C0002:
+0055 22                RET     
+             ; FUNCTION CapSense_Enable (END)
+
+             ; FUNCTION CapSense_Start (BEGIN)
+                                           ; SOURCE LINE # 541
+                                           ; SOURCE LINE # 542
+                                           ; SOURCE LINE # 543
+0000 900000      R     MOV     DPTR,#CapSense_initVar
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 7009              JNZ     ?C0003
+                                           ; SOURCE LINE # 544
+                                           ; SOURCE LINE # 545
+0008 120000      R     LCALL   CapSense_Init
+                                           ; SOURCE LINE # 546
+000B 900000      R     MOV     DPTR,#CapSense_initVar
+000E 7401              MOV     A,#01H
+0010 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 547
+0011         ?C0003:
+                                           ; SOURCE LINE # 548
+0011 120000      R     LCALL   CapSense_Enable
+                                           ; SOURCE LINE # 556
+0014         ?C0004:
+0014 22                RET     
+             ; FUNCTION CapSense_Start (END)
+
+             ; FUNCTION CapSense_Stop (BEGIN)
+                                           ; SOURCE LINE # 578
+                                           ; SOURCE LINE # 579
+                                           ; SOURCE LINE # 581
+0000 906477            MOV     DPTR,#06477H
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 38  
+
+0005 EF                MOV     A,R7
+0006 54FD              ANL     A,#0FDH
+0008 FF                MOV     R7,A
+0009 EF                MOV     A,R7
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 584
+000B 7F05              MOV     R7,#05H
+000D 120000      E     LCALL   _?CyIntDisable
+                                           ; SOURCE LINE # 590
+0010 120000      R     LCALL   CapSense_ClearSensors
+                                           ; SOURCE LINE # 604
+0013 906597            MOV     DPTR,#06597H
+0016 E0                MOVX    A,@DPTR
+0017 FF                MOV     R7,A
+0018 EF                MOV     A,R7
+0019 54DF              ANL     A,#0DFH
+001B FF                MOV     R7,A
+001C EF                MOV     A,R7
+001D F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 643
+001E 120000      E     LCALL   CapSense_IntClock_Stop
+                                           ; SOURCE LINE # 647
+0021 120000      E     LCALL   CapSense_CompCH0_Stop
+                                           ; SOURCE LINE # 649
+0024 120000      E     LCALL   CapSense_IdacCH0_Stop
+                                           ; SOURCE LINE # 671
+0027 905870            MOV     DPTR,#05870H
+002A E0                MOVX    A,@DPTR
+002B FF                MOV     R7,A
+002C EF                MOV     A,R7
+002D 54FE              ANL     A,#0FEH
+002F FF                MOV     R7,A
+0030 EF                MOV     A,R7
+0031 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 672
+0032 9043AB            MOV     DPTR,#043ABH
+0035 E0                MOVX    A,@DPTR
+0036 FF                MOV     R7,A
+0037 EF                MOV     A,R7
+0038 54EF              ANL     A,#0EFH
+003A FF                MOV     R7,A
+003B EF                MOV     A,R7
+003C F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 673
+003D 9043BB            MOV     DPTR,#043BBH
+0040 E0                MOVX    A,@DPTR
+0041 FF                MOV     R7,A
+0042 EF                MOV     A,R7
+0043 54EF              ANL     A,#0EFH
+0045 FF                MOV     R7,A
+0046 EF                MOV     A,R7
+0047 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 683
+0048 906477            MOV     DPTR,#06477H
+004B E0                MOVX    A,@DPTR
+004C FF                MOV     R7,A
+004D EF                MOV     A,R7
+004E 547F              ANL     A,#07FH
+0050 FF                MOV     R7,A
+0051 EF                MOV     A,R7
+0052 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 684
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 39  
+
+0053         ?C0005:
+0053 22                RET     
+             ; FUNCTION CapSense_Stop (END)
+
+             ; FUNCTION _?CapSense_FindNextSensor (BEGIN)
+                                           ; SOURCE LINE # 716
+0000 90FFFF            MOV     DPTR,#0FFFFH
+0003 120000      E     LCALL   ?C?ADDXBP
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+0008 90FFFE            MOV     DPTR,#0FFFEH
+000B 120000      E     LCALL   ?C?ADDXBP
+000E         ?C0008:
+                                           ; SOURCE LINE # 723
+                                           ; SOURCE LINE # 725
+000E 850083      E     MOV     DPH,?C_XBP
+0011 850082      E     MOV     DPL,?C_XBP+01H
+0014 A3                INC     DPTR
+0015 A3                INC     DPTR
+0016 E0                MOVX    A,@DPTR
+0017 04                INC     A
+0018 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 726
+0019 850083      E     MOV     DPH,?C_XBP
+001C 850082      E     MOV     DPL,?C_XBP+01H
+001F A3                INC     DPTR
+0020 A3                INC     DPTR
+0021 E0                MOVX    A,@DPTR
+0022 FF                MOV     R7,A
+0023 EF                MOV     A,R7
+0024 6407              XRL     A,#07H
+0026 605F              JZ      ?C0007
+                                           ; SOURCE LINE # 727
+                                           ; SOURCE LINE # 728
+                                           ; SOURCE LINE # 729
+0028         ?C0009:
+                                           ; SOURCE LINE # 730
+0028 850083      E     MOV     DPH,?C_XBP
+002B 850082      E     MOV     DPL,?C_XBP+01H
+002E A3                INC     DPTR
+002F A3                INC     DPTR
+0030 E0                MOVX    A,@DPTR
+0031 FF                MOV     R7,A
+0032 EF                MOV     A,R7
+0033 13                RRC     A
+0034 13                RRC     A
+0035 13                RRC     A
+0036 541F              ANL     A,#01FH
+0038 FF                MOV     R7,A
+0039 850083      E     MOV     DPH,?C_XBP
+003C 850082      E     MOV     DPL,?C_XBP+01H
+003F EF                MOV     A,R7
+0040 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 731
+0041 850083      E     MOV     DPH,?C_XBP
+0044 850082      E     MOV     DPL,?C_XBP+01H
+0047 A3                INC     DPTR
+0048 A3                INC     DPTR
+0049 E0                MOVX    A,@DPTR
+004A FF                MOV     R7,A
+004B EF                MOV     A,R7
+004C 5407              ANL     A,#07H
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 40  
+
+004E FF                MOV     R7,A
+004F 7401              MOV     A,#01H
+0051 A807              MOV     R0,AR7
+0053 08                INC     R0
+0054 8002              SJMP    ?C0036
+0056         ?C0035:
+0056 C3                CLR     C
+0057 33                RLC     A
+0058         ?C0036:
+0058 D8FC              DJNZ    R0,?C0035
+005A FF                MOV     R7,A
+005B 850083      E     MOV     DPH,?C_XBP
+005E 850082      E     MOV     DPL,?C_XBP+01H
+0061 A3                INC     DPTR
+0062 EF                MOV     A,R7
+0063 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 732
+0064         ?C0006:
+                                           ; SOURCE LINE # 733
+0064 850083      E     MOV     DPH,?C_XBP
+0067 850082      E     MOV     DPL,?C_XBP+01H
+006A E0                MOVX    A,@DPTR
+006B FF                MOV     R7,A
+006C 7400        R     MOV     A,#LOW CapSense_SensorEnableMask
+006E 2F                ADD     A,R7
+006F F582              MOV     DPL,A
+0071 E4                CLR     A
+0072 3400        R     ADDC    A,#HIGH CapSense_SensorEnableMask
+0074 F583              MOV     DPH,A
+0076 E0                MOVX    A,@DPTR
+0077 FF                MOV     R7,A
+0078 850083      E     MOV     DPH,?C_XBP
+007B 850082      E     MOV     DPL,?C_XBP+01H
+007E A3                INC     DPTR
+007F E0                MOVX    A,@DPTR
+0080 FE                MOV     R6,A
+0081 EF                MOV     A,R7
+0082 5E                ANL     A,R6
+0083 FF                MOV     R7,A
+0084 EF                MOV     A,R7
+0085 6087              JZ      ?C0008
+0087         ?C0007:
+                                           ; SOURCE LINE # 735
+0087 850083      E     MOV     DPH,?C_XBP
+008A 850082      E     MOV     DPL,?C_XBP+01H
+008D A3                INC     DPTR
+008E A3                INC     DPTR
+008F E0                MOVX    A,@DPTR
+0090 FF                MOV     R7,A
+                                           ; SOURCE LINE # 736
+0091         ?C0010:
+0091 900003            MOV     DPTR,#03H
+0094 120000      E     LCALL   ?C?ADDXBP
+0097 22                RET     
+             ; FUNCTION _?CapSense_FindNextSensor (END)
+
+             ; FUNCTION _?CapSense_SetScanSlotSettings (BEGIN)
+                                           ; SOURCE LINE # 865
+0000 90FFFF            MOV     DPTR,#0FFFFH
+0003 120000      E     LCALL   ?C?ADDXBP
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 41  
+
+0008 90FFFF            MOV     DPTR,#0FFFFH
+000B 120000      E     LCALL   ?C?ADDXBP
+                                           ; SOURCE LINE # 871
+000E 850083      E     MOV     DPH,?C_XBP
+0011 850082      E     MOV     DPL,?C_XBP+01H
+0014 A3                INC     DPTR
+0015 E0                MOVX    A,@DPTR
+0016 FF                MOV     R7,A
+0017 EF                MOV     A,R7
+0018 900000      R     MOV     DPTR,#CapSense_widgetNumber
+001B 93                MOVC    A,@A+DPTR
+001C FF                MOV     R7,A
+001D 850083      E     MOV     DPH,?C_XBP
+0020 850082      E     MOV     DPL,?C_XBP+01H
+0023 EF                MOV     A,R7
+0024 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 875
+0025 850083      E     MOV     DPH,?C_XBP
+0028 850082      E     MOV     DPL,?C_XBP+01H
+002B A3                INC     DPTR
+002C E0                MOVX    A,@DPTR
+002D FF                MOV     R7,A
+002E 7400        R     MOV     A,#LOW CapSense_idacSettings
+0030 2F                ADD     A,R7
+0031 F582              MOV     DPL,A
+0033 E4                CLR     A
+0034 3400        R     ADDC    A,#HIGH CapSense_idacSettings
+0036 F583              MOV     DPH,A
+0038 E0                MOVX    A,@DPTR
+0039 FF                MOV     R7,A
+003A 120000      E     LCALL   _?CapSense_IdacCH0_SetValue
+                                           ; SOURCE LINE # 883
+003D 850083      E     MOV     DPH,?C_XBP
+0040 850082      E     MOV     DPL,?C_XBP+01H
+0043 E0                MOVX    A,@DPTR
+0044 FF                MOV     R7,A
+0045 7400        R     MOV     A,#LOW CapSense_widgetResolution
+0047 2F                ADD     A,R7
+0048 F582              MOV     DPL,A
+004A E4                CLR     A
+004B 3400        R     ADDC    A,#HIGH CapSense_widgetResolution
+004D F583              MOV     DPH,A
+004F E0                MOVX    A,@DPTR
+0050 FF                MOV     R7,A
+0051 906557            MOV     DPTR,#06557H
+0054 EF                MOV     A,R7
+0055 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 890
+0056 900000      R     MOV     DPTR,#CapSense_AnalogSwitchDivider
+0059 E0                MOVX    A,@DPTR
+005A FF                MOV     R7,A
+005B 120000      R     LCALL   _?CapSense_SetPrescaler
+                                           ; SOURCE LINE # 944
+005E         ?C0011:
+005E 900002            MOV     DPTR,#02H
+0061 120000      E     LCALL   ?C?ADDXBP
+0064 22                RET     
+             ; FUNCTION _?CapSense_SetScanSlotSettings (END)
+
+             ; FUNCTION _CapSense_ScanSensor (BEGIN)
+                                           ; SOURCE LINE # 977
+0000 900000      R     MOV     DPTR,#sensor
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 42  
+
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 978
+                                           ; SOURCE LINE # 980
+0005 900000      R     MOV     DPTR,#CapSense_csv
+0008 E4                CLR     A
+0009 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 981
+000A 900000      R     MOV     DPTR,#sensor
+000D E0                MOVX    A,@DPTR
+000E FF                MOV     R7,A
+000F 900000      R     MOV     DPTR,#CapSense_sensorIndex
+0012 EF                MOV     A,R7
+0013 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 985
+0014 900000      R     MOV     DPTR,#CapSense_csv
+0017 7481              MOV     A,#081H
+0019 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 986
+001A 900000      R     MOV     DPTR,#sensor
+001D E0                MOVX    A,@DPTR
+001E FF                MOV     R7,A
+001F 120000      R     LCALL   _?CapSense_PreScan
+                                           ; SOURCE LINE # 1019
+0022         ?C0012:
+0022 22                RET     
+             ; FUNCTION _CapSense_ScanSensor (END)
+
+             ; FUNCTION CapSense_ScanEnabledWidgets (BEGIN)
+                                           ; SOURCE LINE # 1054
+                                           ; SOURCE LINE # 1055
+                                           ; SOURCE LINE # 1057
+0000 900000      R     MOV     DPTR,#CapSense_csv
+0003 E4                CLR     A
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1058
+0005 900000      R     MOV     DPTR,#CapSense_sensorIndex
+0008 74FF              MOV     A,#0FFH
+000A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1062
+000B 900000      R     MOV     DPTR,#CapSense_sensorIndex
+000E E0                MOVX    A,@DPTR
+000F FF                MOV     R7,A
+0010 120000      R     LCALL   _?CapSense_FindNextSensor
+0013 900000      R     MOV     DPTR,#CapSense_sensorIndex
+0016 EF                MOV     A,R7
+0017 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1065
+0018 900000      R     MOV     DPTR,#CapSense_sensorIndex
+001B E0                MOVX    A,@DPTR
+001C FF                MOV     R7,A
+001D EF                MOV     A,R7
+001E C3                CLR     C
+001F 9407              SUBB    A,#07H
+0021 5016              JNC     ?C0014
+                                           ; SOURCE LINE # 1066
+                                           ; SOURCE LINE # 1067
+0023 900000      R     MOV     DPTR,#CapSense_csv
+0026 E0                MOVX    A,@DPTR
+0027 FF                MOV     R7,A
+0028 EF                MOV     A,R7
+0029 4401              ORL     A,#01H
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 43  
+
+002B FF                MOV     R7,A
+002C 900000      R     MOV     DPTR,#CapSense_csv
+002F EF                MOV     A,R7
+0030 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1068
+0031 900000      R     MOV     DPTR,#CapSense_sensorIndex
+0034 E0                MOVX    A,@DPTR
+0035 FF                MOV     R7,A
+0036 120000      R     LCALL   _?CapSense_PreScan
+                                           ; SOURCE LINE # 1069
+0039         ?C0013:
+                                           ; SOURCE LINE # 1084
+0039         ?C0014:
+0039 22                RET     
+             ; FUNCTION CapSense_ScanEnabledWidgets (END)
+
+             ; FUNCTION CapSense_IsBusy (BEGIN)
+                                           ; SOURCE LINE # 1107
+                                           ; SOURCE LINE # 1108
+                                           ; SOURCE LINE # 1109
+0000 900000      R     MOV     DPTR,#CapSense_csv
+0003 E0                MOVX    A,@DPTR
+0004 FF                MOV     R7,A
+0005 EF                MOV     A,R7
+0006 5401              ANL     A,#01H
+0008 FF                MOV     R7,A
+0009 7E00              MOV     R6,#00H
+000B EF                MOV     A,R7
+000C 6401              XRL     A,#01H
+000E 4E                ORL     A,R6
+000F 7004              JNZ     ?C0015
+0011 7F01              MOV     R7,#01H
+0013 8002              SJMP    ?C0016
+0015         ?C0015:
+0015 7F00              MOV     R7,#00H
+0017         ?C0016:
+                                           ; SOURCE LINE # 1111
+0017         ?C0017:
+0017 22                RET     
+             ; FUNCTION CapSense_IsBusy (END)
+
+             ; FUNCTION _CapSense_ReadSensorRaw (BEGIN)
+                                           ; SOURCE LINE # 1133
+0000 900000      R     MOV     DPTR,#sensor
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1134
+                                           ; SOURCE LINE # 1135
+0005 900000      R     MOV     DPTR,#sensor
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A EF                MOV     A,R7
+000B 25E0              ADD     A,ACC
+000D 2400        R     ADD     A,#LOW CapSense_SensorRaw
+000F F582              MOV     DPL,A
+0011 E4                CLR     A
+0012 3400        R     ADDC    A,#HIGH CapSense_SensorRaw
+0014 F583              MOV     DPH,A
+0016 E0                MOVX    A,@DPTR
+0017 FE                MOV     R6,A
+0018 A3                INC     DPTR
+0019 E0                MOVX    A,@DPTR
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 44  
+
+001A FF                MOV     R7,A
+                                           ; SOURCE LINE # 1136
+001B         ?C0018:
+001B 22                RET     
+             ; FUNCTION _CapSense_ReadSensorRaw (END)
+
+             ; FUNCTION CapSense_ClearSensors (BEGIN)
+                                           ; SOURCE LINE # 1154
+                                           ; SOURCE LINE # 1155
+                                           ; SOURCE LINE # 1158
+0000 900000      R     MOV     DPTR,#i
+0003 E4                CLR     A
+0004 F0                MOVX    @DPTR,A
+0005         ?C0019:
+0005 900000      R     MOV     DPTR,#i
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A EF                MOV     A,R7
+000B C3                CLR     C
+000C 9407              SUBB    A,#07H
+000E 5010              JNC     ?C0022
+                                           ; SOURCE LINE # 1159
+                                           ; SOURCE LINE # 1160
+0010 900000      R     MOV     DPTR,#i
+0013 E0                MOVX    A,@DPTR
+0014 FF                MOV     R7,A
+0015 120000      R     LCALL   _?CapSense_DisableSensor
+                                           ; SOURCE LINE # 1161
+0018         ?C0021:
+0018 900000      R     MOV     DPTR,#i
+001B E0                MOVX    A,@DPTR
+001C 04                INC     A
+001D F0                MOVX    @DPTR,A
+001E 80E5              SJMP    ?C0019
+0020         ?C0020:
+                                           ; SOURCE LINE # 1162
+0020         ?C0022:
+0020 22                RET     
+             ; FUNCTION CapSense_ClearSensors (END)
+
+             ; FUNCTION _?CapSense_EnableSensor (BEGIN)
+                                           ; SOURCE LINE # 1304
+0000 90FFFF            MOV     DPTR,#0FFFFH
+0003 120000      E     LCALL   ?C?ADDXBP
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+0008 90FFFE            MOV     DPTR,#0FFFEH
+000B 120000      E     LCALL   ?C?ADDXBP
+                                           ; SOURCE LINE # 1306
+000E 850083      E     MOV     DPH,?C_XBP
+0011 850082      E     MOV     DPL,?C_XBP+01H
+0014 A3                INC     DPTR
+0015 A3                INC     DPTR
+0016 E0                MOVX    A,@DPTR
+0017 FF                MOV     R7,A
+0018 EF                MOV     A,R7
+0019 900000      R     MOV     DPTR,#CapSense_portTable
+001C 93                MOVC    A,@A+DPTR
+001D FF                MOV     R7,A
+001E 850083      E     MOV     DPH,?C_XBP
+0021 850082      E     MOV     DPL,?C_XBP+01H
+0024 EF                MOV     A,R7
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 45  
+
+0025 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1307
+0026 850083      E     MOV     DPH,?C_XBP
+0029 850082      E     MOV     DPL,?C_XBP+01H
+002C A3                INC     DPTR
+002D A3                INC     DPTR
+002E E0                MOVX    A,@DPTR
+002F FF                MOV     R7,A
+0030 EF                MOV     A,R7
+0031 900000      R     MOV     DPTR,#CapSense_maskTable
+0034 93                MOVC    A,@A+DPTR
+0035 FF                MOV     R7,A
+0036 850083      E     MOV     DPH,?C_XBP
+0039 850082      E     MOV     DPL,?C_XBP+01H
+003C A3                INC     DPTR
+003D EF                MOV     A,R7
+003E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1317
+003F 850083      E     MOV     DPH,?C_XBP
+0042 850082      E     MOV     DPL,?C_XBP+01H
+0045 A3                INC     DPTR
+0046 A3                INC     DPTR
+0047 E0                MOVX    A,@DPTR
+0048 FF                MOV     R7,A
+0049 EF                MOV     A,R7
+004A 25E0              ADD     A,ACC
+004C 2400        R     ADD     A,#LOW CapSense_pcTable
+004E F582              MOV     DPL,A
+0050 E4                CLR     A
+0051 3400        R     ADDC    A,#HIGH CapSense_pcTable
+0053 F583              MOV     DPH,A
+0055 E4                CLR     A
+0056 93                MOVC    A,@A+DPTR
+0057 FE                MOV     R6,A
+0058 7401              MOV     A,#01H
+005A 93                MOVC    A,@A+DPTR
+005B FF                MOV     R7,A
+005C 8F82              MOV     DPL,R7
+005E 8E83              MOV     DPH,R6
+0060 7409              MOV     A,#09H
+0062 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1320
+0063 850083      E     MOV     DPH,?C_XBP
+0066 850082      E     MOV     DPL,?C_XBP+01H
+0069 E0                MOVX    A,@DPTR
+006A FF                MOV     R7,A
+006B EF                MOV     A,R7
+006C B40F09            CJNE    A,#0FH,?C0023
+                                           ; SOURCE LINE # 1321
+                                           ; SOURCE LINE # 1322
+006F 850083      E     MOV     DPH,?C_XBP
+0072 850082      E     MOV     DPL,?C_XBP+01H
+0075 7407              MOV     A,#07H
+0077 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1323
+0078         ?C0023:
+                                           ; SOURCE LINE # 1324
+0078 850083      E     MOV     DPH,?C_XBP
+007B 850082      E     MOV     DPL,?C_XBP+01H
+007E E0                MOVX    A,@DPTR
+007F FF                MOV     R7,A
+0080 EF                MOV     A,R7
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 46  
+
+0081 25E0              ADD     A,ACC
+0083 2400        R     ADD     A,#LOW CapSense_csTable
+0085 F582              MOV     DPL,A
+0087 E4                CLR     A
+0088 3400        R     ADDC    A,#HIGH CapSense_csTable
+008A F583              MOV     DPH,A
+008C E4                CLR     A
+008D 93                MOVC    A,@A+DPTR
+008E FE                MOV     R6,A
+008F 7401              MOV     A,#01H
+0091 93                MOVC    A,@A+DPTR
+0092 FF                MOV     R7,A
+0093 8F82              MOV     DPL,R7
+0095 8E83              MOV     DPH,R6
+0097 C083              PUSH    DPH
+0099 C082              PUSH    DPL
+009B E0                MOVX    A,@DPTR
+009C FF                MOV     R7,A
+009D 850083      E     MOV     DPH,?C_XBP
+00A0 850082      E     MOV     DPL,?C_XBP+01H
+00A3 A3                INC     DPTR
+00A4 E0                MOVX    A,@DPTR
+00A5 FE                MOV     R6,A
+00A6 EF                MOV     A,R7
+00A7 4E                ORL     A,R6
+00A8 FF                MOV     R7,A
+00A9 D082              POP     DPL
+00AB D083              POP     DPH
+00AD EF                MOV     A,R7
+00AE F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1331
+00AF 850083      E     MOV     DPH,?C_XBP
+00B2 850082      E     MOV     DPL,?C_XBP+01H
+00B5 A3                INC     DPTR
+00B6 A3                INC     DPTR
+00B7 E0                MOVX    A,@DPTR
+00B8 FF                MOV     R7,A
+00B9 120000      E     LCALL   _?CapSense_AMuxCH0_Set
+                                           ; SOURCE LINE # 1359
+00BC         ?C0024:
+00BC 900003            MOV     DPTR,#03H
+00BF 120000      E     LCALL   ?C?ADDXBP
+00C2 22                RET     
+             ; FUNCTION _?CapSense_EnableSensor (END)
+
+             ; FUNCTION _?CapSense_DisableSensor (BEGIN)
+                                           ; SOURCE LINE # 1389
+0000 90FFFF            MOV     DPTR,#0FFFFH
+0003 120000      E     LCALL   ?C?ADDXBP
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+0008 90FFFE            MOV     DPTR,#0FFFEH
+000B 120000      E     LCALL   ?C?ADDXBP
+                                           ; SOURCE LINE # 1391
+000E 850083      E     MOV     DPH,?C_XBP
+0011 850082      E     MOV     DPL,?C_XBP+01H
+0014 A3                INC     DPTR
+0015 A3                INC     DPTR
+0016 E0                MOVX    A,@DPTR
+0017 FF                MOV     R7,A
+0018 EF                MOV     A,R7
+0019 900000      R     MOV     DPTR,#CapSense_portTable
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 47  
+
+001C 93                MOVC    A,@A+DPTR
+001D FF                MOV     R7,A
+001E 850083      E     MOV     DPH,?C_XBP
+0021 850082      E     MOV     DPL,?C_XBP+01H
+0024 EF                MOV     A,R7
+0025 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1392
+0026 850083      E     MOV     DPH,?C_XBP
+0029 850082      E     MOV     DPL,?C_XBP+01H
+002C A3                INC     DPTR
+002D A3                INC     DPTR
+002E E0                MOVX    A,@DPTR
+002F FF                MOV     R7,A
+0030 EF                MOV     A,R7
+0031 900000      R     MOV     DPTR,#CapSense_maskTable
+0034 93                MOVC    A,@A+DPTR
+0035 FF                MOV     R7,A
+0036 850083      E     MOV     DPH,?C_XBP
+0039 850082      E     MOV     DPL,?C_XBP+01H
+003C A3                INC     DPTR
+003D EF                MOV     A,R7
+003E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1406
+003F 850083      E     MOV     DPH,?C_XBP
+0042 850082      E     MOV     DPL,?C_XBP+01H
+0045 A3                INC     DPTR
+0046 A3                INC     DPTR
+0047 E0                MOVX    A,@DPTR
+0048 FF                MOV     R7,A
+0049 120000      E     LCALL   _?CapSense_AMuxCH0_Unset
+                                           ; SOURCE LINE # 1436
+004C 850083      E     MOV     DPH,?C_XBP
+004F 850082      E     MOV     DPL,?C_XBP+01H
+0052 E0                MOVX    A,@DPTR
+0053 FF                MOV     R7,A
+0054 EF                MOV     A,R7
+0055 B40F09            CJNE    A,#0FH,?C0025
+                                           ; SOURCE LINE # 1437
+                                           ; SOURCE LINE # 1438
+0058 850083      E     MOV     DPH,?C_XBP
+005B 850082      E     MOV     DPL,?C_XBP+01H
+005E 7407              MOV     A,#07H
+0060 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1439
+0061         ?C0025:
+                                           ; SOURCE LINE # 1440
+0061 850083      E     MOV     DPH,?C_XBP
+0064 850082      E     MOV     DPL,?C_XBP+01H
+0067 E0                MOVX    A,@DPTR
+0068 FF                MOV     R7,A
+0069 EF                MOV     A,R7
+006A 25E0              ADD     A,ACC
+006C 2400        R     ADD     A,#LOW CapSense_csTable
+006E F582              MOV     DPL,A
+0070 E4                CLR     A
+0071 3400        R     ADDC    A,#HIGH CapSense_csTable
+0073 F583              MOV     DPH,A
+0075 E4                CLR     A
+0076 93                MOVC    A,@A+DPTR
+0077 FE                MOV     R6,A
+0078 7401              MOV     A,#01H
+007A 93                MOVC    A,@A+DPTR
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 48  
+
+007B FF                MOV     R7,A
+007C 8F82              MOV     DPL,R7
+007E 8E83              MOV     DPH,R6
+0080 C083              PUSH    DPH
+0082 C082              PUSH    DPL
+0084 E0                MOVX    A,@DPTR
+0085 FF                MOV     R7,A
+0086 850083      E     MOV     DPH,?C_XBP
+0089 850082      E     MOV     DPL,?C_XBP+01H
+008C A3                INC     DPTR
+008D E0                MOVX    A,@DPTR
+008E FE                MOV     R6,A
+008F EE                MOV     A,R6
+0090 F4                CPL     A
+0091 FE                MOV     R6,A
+0092 EF                MOV     A,R7
+0093 5E                ANL     A,R6
+0094 FF                MOV     R7,A
+0095 D082              POP     DPL
+0097 D083              POP     DPH
+0099 EF                MOV     A,R7
+009A F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1444
+009B 850083      E     MOV     DPH,?C_XBP
+009E 850082      E     MOV     DPL,?C_XBP+01H
+00A1 A3                INC     DPTR
+00A2 A3                INC     DPTR
+00A3 E0                MOVX    A,@DPTR
+00A4 FF                MOV     R7,A
+00A5 EF                MOV     A,R7
+00A6 25E0              ADD     A,ACC
+00A8 2400        R     ADD     A,#LOW CapSense_pcTable
+00AA F582              MOV     DPL,A
+00AC E4                CLR     A
+00AD 3400        R     ADDC    A,#HIGH CapSense_pcTable
+00AF F583              MOV     DPH,A
+00B1 E4                CLR     A
+00B2 93                MOVC    A,@A+DPTR
+00B3 FE                MOV     R6,A
+00B4 7401              MOV     A,#01H
+00B6 93                MOVC    A,@A+DPTR
+00B7 FF                MOV     R7,A
+00B8 8F82              MOV     DPL,R7
+00BA 8E83              MOV     DPH,R6
+00BC 7408              MOV     A,#08H
+00BE F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1450
+00BF         ?C0026:
+00BF 900003            MOV     DPTR,#03H
+00C2 120000      E     LCALL   ?C?ADDXBP
+00C5 22                RET     
+             ; FUNCTION _?CapSense_DisableSensor (END)
+
+             ; FUNCTION _?CapSense_PreScan (BEGIN)
+                                           ; SOURCE LINE # 1473
+0000 90FFFF            MOV     DPTR,#0FFFFH
+0003 120000      E     LCALL   ?C?ADDXBP
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1476
+0008 850083      E     MOV     DPH,?C_XBP
+000B 850082      E     MOV     DPL,?C_XBP+01H
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 49  
+
+000E E0                MOVX    A,@DPTR
+000F FF                MOV     R7,A
+0010 120000      R     LCALL   _?CapSense_SetScanSlotSettings
+                                           ; SOURCE LINE # 1484
+0013 906477            MOV     DPTR,#06477H
+0016 E0                MOVX    A,@DPTR
+0017 FF                MOV     R7,A
+0018 EF                MOV     A,R7
+0019 4401              ORL     A,#01H
+001B FF                MOV     R7,A
+001C EF                MOV     A,R7
+001D F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1492
+001E 905870            MOV     DPTR,#05870H
+0021 E0                MOVX    A,@DPTR
+0022 FF                MOV     R7,A
+0023 EF                MOV     A,R7
+0024 54FE              ANL     A,#0FEH
+0026 FF                MOV     R7,A
+0027 EF                MOV     A,R7
+0028 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1496
+0029 850083      E     MOV     DPH,?C_XBP
+002C 850082      E     MOV     DPL,?C_XBP+01H
+002F E0                MOVX    A,@DPTR
+0030 FF                MOV     R7,A
+0031 120000      R     LCALL   _?CapSense_EnableSensor
+                                           ; SOURCE LINE # 1600
+0034 906477            MOV     DPTR,#06477H
+0037 E0                MOVX    A,@DPTR
+0038 FF                MOV     R7,A
+0039 EF                MOV     A,R7
+003A 4402              ORL     A,#02H
+003C FF                MOV     R7,A
+003D EF                MOV     A,R7
+003E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1606
+003F         ?C0027:
+003F 900001            MOV     DPTR,#01H
+0042 120000      E     LCALL   ?C?ADDXBP
+0045 22                RET     
+             ; FUNCTION _?CapSense_PreScan (END)
+
+             ; FUNCTION _CapSense_PostScan (BEGIN)
+                                           ; SOURCE LINE # 1633
+0000 900000      R     MOV     DPTR,#sensor
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1634
+                                           ; SOURCE LINE # 1636
+0005 906477            MOV     DPTR,#06477H
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A EF                MOV     A,R7
+000B 54FC              ANL     A,#0FCH
+000D FF                MOV     R7,A
+000E EF                MOV     A,R7
+000F F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1643
+0010 906514            MOV     DPTR,#06514H
+0013 E0                MOVX    A,@DPTR
+0014 FF                MOV     R7,A
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 50  
+
+0015 7E00              MOV     R6,#00H
+0017 EF                MOV     A,R7
+0018 7F00              MOV     R7,#00H
+001A FE                MOV     R6,A
+001B 900000      R     MOV     DPTR,#sensor
+001E E0                MOVX    A,@DPTR
+001F FD                MOV     R5,A
+0020 ED                MOV     A,R5
+0021 25E0              ADD     A,ACC
+0023 2400        R     ADD     A,#LOW CapSense_SensorRaw
+0025 F582              MOV     DPL,A
+0027 E4                CLR     A
+0028 3400        R     ADDC    A,#HIGH CapSense_SensorRaw
+002A F583              MOV     DPH,A
+002C EE                MOV     A,R6
+002D F0                MOVX    @DPTR,A
+002E A3                INC     DPTR
+002F EF                MOV     A,R7
+0030 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1644
+0031 900000      R     MOV     DPTR,#sensor
+0034 E0                MOVX    A,@DPTR
+0035 FF                MOV     R7,A
+0036 EF                MOV     A,R7
+0037 25E0              ADD     A,ACC
+0039 2400        R     ADD     A,#LOW CapSense_SensorRaw
+003B F582              MOV     DPL,A
+003D E4                CLR     A
+003E 3400        R     ADDC    A,#HIGH CapSense_SensorRaw
+0040 F583              MOV     DPH,A
+0042 C083              PUSH    DPH
+0044 C082              PUSH    DPL
+0046 E0                MOVX    A,@DPTR
+0047 FE                MOV     R6,A
+0048 A3                INC     DPTR
+0049 E0                MOVX    A,@DPTR
+004A FF                MOV     R7,A
+004B 906504            MOV     DPTR,#06504H
+004E E0                MOVX    A,@DPTR
+004F FD                MOV     R5,A
+0050 7C00              MOV     R4,#00H
+0052 EE                MOV     A,R6
+0053 4C                ORL     A,R4
+0054 FE                MOV     R6,A
+0055 EF                MOV     A,R7
+0056 4D                ORL     A,R5
+0057 FF                MOV     R7,A
+0058 D082              POP     DPL
+005A D083              POP     DPH
+005C EE                MOV     A,R6
+005D F0                MOVX    @DPTR,A
+005E A3                INC     DPTR
+005F EF                MOV     A,R7
+0060 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1645
+0061 900000      R     MOV     DPTR,#sensor
+0064 E0                MOVX    A,@DPTR
+0065 FF                MOV     R7,A
+0066 EF                MOV     A,R7
+0067 25E0              ADD     A,ACC
+0069 2400        R     ADD     A,#LOW CapSense_SensorRaw
+006B F582              MOV     DPL,A
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 51  
+
+006D E4                CLR     A
+006E 3400        R     ADDC    A,#HIGH CapSense_SensorRaw
+0070 F583              MOV     DPH,A
+0072 E0                MOVX    A,@DPTR
+0073 FE                MOV     R6,A
+0074 A3                INC     DPTR
+0075 E0                MOVX    A,@DPTR
+0076 FF                MOV     R7,A
+0077 C3                CLR     C
+0078 74FF              MOV     A,#0FFH
+007A 9F                SUBB    A,R7
+007B FF                MOV     R7,A
+007C 74FF              MOV     A,#0FFH
+007E 9E                SUBB    A,R6
+007F FE                MOV     R6,A
+0080 900000      R     MOV     DPTR,#sensor
+0083 E0                MOVX    A,@DPTR
+0084 FD                MOV     R5,A
+0085 ED                MOV     A,R5
+0086 25E0              ADD     A,ACC
+0088 2400        R     ADD     A,#LOW CapSense_SensorRaw
+008A F582              MOV     DPL,A
+008C E4                CLR     A
+008D 3400        R     ADDC    A,#HIGH CapSense_SensorRaw
+008F F583              MOV     DPH,A
+0091 EE                MOV     A,R6
+0092 F0                MOVX    @DPTR,A
+0093 A3                INC     DPTR
+0094 EF                MOV     A,R7
+0095 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1650
+0096 900000      R     MOV     DPTR,#sensor
+0099 E0                MOVX    A,@DPTR
+009A FF                MOV     R7,A
+009B 120000      R     LCALL   _?CapSense_DisableSensor
+                                           ; SOURCE LINE # 1654
+009E 7F00              MOV     R7,#00H
+00A0 120000      E     LCALL   _?CapSense_IdacCH0_SetValue
+                                           ; SOURCE LINE # 1668
+00A3 905870            MOV     DPTR,#05870H
+00A6 E0                MOVX    A,@DPTR
+00A7 FF                MOV     R7,A
+00A8 EF                MOV     A,R7
+00A9 4401              ORL     A,#01H
+00AB FF                MOV     R7,A
+00AC EF                MOV     A,R7
+00AD F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1670
+00AE         ?C0028:
+00AE 22                RET     
+             ; FUNCTION _CapSense_PostScan (END)
+
+             ; FUNCTION _?CapSense_SetPrescaler (BEGIN)
+                                           ; SOURCE LINE # 1903
+0000 90FFFF            MOV     DPTR,#0FFFFH
+0003 120000      E     LCALL   ?C?ADDXBP
+0006 EF                MOV     A,R7
+0007 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1907
+0008 850083      E     MOV     DPH,?C_XBP
+000B 850082      E     MOV     DPL,?C_XBP+01H
+000E E0                MOVX    A,@DPTR
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 52  
+
+000F FF                MOV     R7,A
+0010 906525            MOV     DPTR,#06525H
+0013 EF                MOV     A,R7
+0014 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1908
+0015 850083      E     MOV     DPH,?C_XBP
+0018 850082      E     MOV     DPL,?C_XBP+01H
+001B E0                MOVX    A,@DPTR
+001C FF                MOV     R7,A
+001D EF                MOV     A,R7
+001E C3                CLR     C
+001F 13                RRC     A
+0020 FF                MOV     R7,A
+0021 906535            MOV     DPTR,#06535H
+0024 EF                MOV     A,R7
+0025 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1915
+0026         ?C0029:
+0026 900001            MOV     DPTR,#01H
+0029 120000      E     LCALL   ?C?ADDXBP
+002C 22                RET     
+             ; FUNCTION _?CapSense_SetPrescaler (END)
+
+             ; FUNCTION CapSense_GetPrescaler (BEGIN)
+                                           ; SOURCE LINE # 1932
+                                           ; SOURCE LINE # 1933
+                                           ; SOURCE LINE # 1934
+0000 900000      R     MOV     DPTR,#prescaler
+0003 E4                CLR     A
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1938
+0005 906525            MOV     DPTR,#06525H
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A 900000      R     MOV     DPTR,#prescaler
+000D EF                MOV     A,R7
+000E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1947
+000F 900000      R     MOV     DPTR,#prescaler
+0012 E0                MOVX    A,@DPTR
+0013 FF                MOV     R7,A
+                                           ; SOURCE LINE # 1948
+0014         ?C0030:
+0014 22                RET     
+             ; FUNCTION CapSense_GetPrescaler (END)
+
+             ; FUNCTION _CapSense_SetScanSpeed (BEGIN)
+                                           ; SOURCE LINE # 1966
+0000 900000      R     MOV     DPTR,#scanspeed
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1967
+                                           ; SOURCE LINE # 1968
+0005 900000      R     MOV     DPTR,#scanspeed
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A 906587            MOV     DPTR,#06587H
+000D EF                MOV     A,R7
+000E F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1969
+000F         ?C0031:
+000F 22                RET     
+C51 COMPILER V9.03   CAPSENSE                                                              04/04/2015 14:09:07 PAGE 53  
+
+             ; FUNCTION _CapSense_SetScanSpeed (END)
+
+             ; FUNCTION _CapSense_SetAnalogSwitchesSource (BEGIN)
+                                           ; SOURCE LINE # 1993
+0000 900000      R     MOV     DPTR,#src
+0003 EF                MOV     A,R7
+0004 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1995
+                                           ; SOURCE LINE # 1996
+0005 900000      R     MOV     DPTR,#src
+0008 E0                MOVX    A,@DPTR
+0009 FF                MOV     R7,A
+000A EF                MOV     A,R7
+000B B4010C            CJNE    A,#01H,?C0032
+                                           ; SOURCE LINE # 1997
+                                           ; SOURCE LINE # 1998
+000E 906477            MOV     DPTR,#06477H
+0011 E0                MOVX    A,@DPTR
+0012 FF                MOV     R7,A
+0013 EF                MOV     A,R7
+0014 54EF              ANL     A,#0EFH
+0016 FF                MOV     R7,A
+0017 EF                MOV     A,R7
+0018 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 1999
+0019 22                RET     
+001A         ?C0032:
+                                           ; SOURCE LINE # 2001
+                                           ; SOURCE LINE # 2002
+001A 906477            MOV     DPTR,#06477H
+001D E0                MOVX    A,@DPTR
+001E FF                MOV     R7,A
+001F EF                MOV     A,R7
+0020 4410              ORL     A,#010H
+0022 FF                MOV     R7,A
+0023 EF                MOV     A,R7
+0024 F0                MOVX    @DPTR,A
+                                           ; SOURCE LINE # 2003
+0025         ?C0033:
+                                           ; SOURCE LINE # 2004
+0025         ?C0034:
+0025 22                RET     
+             ; FUNCTION _CapSense_SetAnalogSwitchesSource (END)
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1579    ----
+   CONSTANT SIZE    =     51    ----
+   XDATA SIZE       =     38    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

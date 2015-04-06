@@ -1,0 +1,9 @@
+CapSense_DisableSensor
+CapSense_PreScan
+CapSense_SetScanSlotSettings
+CapSense_AMuxCH0_Unset
+CapSense_IdacCH0_SetValue
+CapSense_FindNextSensor
+CapSense_EnableSensor
+CapSense_AMuxCH0_Set
+CapSense_SetPrescaler
